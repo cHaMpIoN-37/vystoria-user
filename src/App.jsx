@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
+import { ScreenOrientation } from '@capacitor/screen-orientation';
 import {
   Home, Search as SearchIcon, BookOpen, Trophy, User,
   LogOut, Trash2, Mail, CheckCircle2, Settings, Loader2,
@@ -122,6 +123,40 @@ export default function App() {
     }, 1000);
     return () => clearInterval(timer);
   }, [currentView]);
+
+
+  // The whole app is portrait except the story engine, which is authored for
+  // landscape. CSS cannot change device orientation, so lock it natively on
+  // the way in and release it on the way out. MainActivity declares
+  // configChanges="orientation|screenSize", so rotating does NOT recreate the
+  // activity — React state (currentSceneId, sequenceIndex, saveSlots) survives.
+  useEffect(() => {
+    if (!IS_NATIVE) return;
+
+    let cancelled = false;
+    const target = currentView === 'engine' ? 'landscape' : 'portrait';
+
+    (async () => {
+      try {
+        // 'landscape' accepts either landscape direction, so the player can
+        // hold the phone whichever way is comfortable.
+        await ScreenOrientation.lock({ orientation: target });
+      } catch (err) {
+        // Never let an orientation failure block gameplay — worst case the
+        // story renders in the current orientation.
+        if (!cancelled) console.error('[vystoria] orientation lock failed:', err);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [currentView]);
+
+  // Release the lock if the component unmounts while still in the engine,
+  // so the OS orientation setting isn't left pinned.
+  useEffect(() => {
+    if (!IS_NATIVE) return;
+    return () => { ScreenOrientation.unlock().catch(() => {}); };
+  }, []);
 
   // Resends the code without re-running the account-discovery branch in
   // handleAuthContinue. For a brand-new signup the auth.users row already
@@ -1385,8 +1420,7 @@ export default function App() {
 
     return (
       <div className="absolute inset-0 z-50 bg-black flex items-center justify-center overflow-hidden font-spartan">
-        <div className="w-full h-[56.25vw] max-h-screen sm:aspect-video sm:h-full sm:w-auto relative overflow-hidden bg-[#0B0B14] text-white shadow-2xl flex flex-col justify-center">
-
+        <div className="w-full h-full relative overflow-hidden bg-[#0B0B14] text-white shadow-2xl flex flex-col justify-center">
           <div className="absolute inset-0 z-0">
              <img src={engineBg} className="w-full h-full object-cover blur-sm brightness-50" alt="Engine BG" />
              <div className="absolute inset-0 bg-black/40"></div>
@@ -1595,7 +1629,7 @@ export default function App() {
       <div className="min-h-[100dvh] bg-black flex items-center justify-center font-spartan selection:bg-purple-500/30">
         <div className={`transition-all duration-500 bg-[#0B0B14] overflow-hidden relative shadow-[0_0_50px_rgba(0,0,0,0.5)] flex flex-col ${
           currentView === 'engine'
-            ? 'w-full h-[100dvh] sm:w-[100vw] sm:h-[100vh] sm:max-w-none sm:max-h-none sm:border-none sm:rounded-none'
+            ? 'w-full h-[100dvh] max-w-none max-h-none border-none rounded-none'
             : 'w-full max-w-[420px] h-[100dvh] sm:h-[850px] sm:max-h-[90vh] sm:border-[8px] border-[#1C1635] sm:rounded-[3rem]'
         }`}>
 

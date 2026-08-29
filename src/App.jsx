@@ -1392,7 +1392,7 @@ export default function App() {
     );
   };
 
-  const renderGameEngine = () => {
+    const renderGameEngine = () => {
     if (!storyData || !storyData.scenes) {
       return (
         <div className="absolute inset-0 bg-[#0B0B14] flex flex-col items-center justify-center text-white p-6 z-50 font-spartan">
@@ -1416,94 +1416,130 @@ export default function App() {
       ? selectedGame?.assets?.characters?.[currentSequenceBlock.speaker]
       : null;
 
+    // In landscape the viewport is WIDE and SHORT (~868x411 on a 1080p phone),
+    // so height is the binding constraint, not width. Every size below keys
+    // off vh. 1vh is ~4.1px on that device, ~7.2px on a tablet in landscape.
+    const menuBtn =
+      "w-full text-white font-bold font-markazi rounded-lg border border-[#8000FF] transition " +
+      "py-[clamp(0.3rem,1.5vh,0.9rem)] px-3 text-[clamp(14px,4.2vh,28px)] leading-none";
+
     return (
-      <div className="absolute inset-0 z-50 bg-black flex items-center justify-center overflow-hidden font-spartan">
-        <div className="w-full h-full relative overflow-hidden bg-[#0B0B14] text-white shadow-2xl flex flex-col justify-center">
+      <div className="absolute inset-0 z-50 bg-black overflow-hidden font-spartan">
+        <div className="w-full h-full relative overflow-hidden bg-[#0B0B14] text-white">
+
           <div className="absolute inset-0 z-0">
              <img src={engineBg} className="w-full h-full object-cover blur-sm brightness-50" alt="Engine BG" />
              <div className="absolute inset-0 bg-black/40"></div>
           </div>
 
-          {/* MAIN MENU — title top-left, buttons bottom-left, matched to screenshot */}
+          {/* MAIN MENU — flex column instead of two absolutely-positioned
+              blocks. Title takes the space it needs at the top, the button
+              stack sits at the bottom, and they can never overlap however
+              short the viewport gets. */}
           {playerState === 'main_menu' && (
-            <div className="relative z-10 w-full h-full">
-               <h1 className="absolute top-[38%] left-[max(2rem,env(safe-area-inset-left))] right-[max(2rem,env(safe-area-inset-right))] text-[clamp(40px,7vw,70px)] leading-[1.05] font-markazi font-bold text-white drop-shadow-xl">{selectedGame?.title || 'Visual Novel'}</h1>
-               <div className="absolute left-[max(2rem,env(safe-area-inset-left))] bottom-[max(2rem,env(safe-area-inset-bottom))] w-[calc(100%-4rem)] max-w-[min(80vw,300px)] space-y-3">
-                 <button onClick={() => { setSequenceIndex(0); setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id); setPlayerState('playing'); }} className="w-full bg-[#9457EB33]/20 hover:bg-[#9457EB33] text-white font-bold font-markazi py-3.5 rounded-lg text-[clamp(22px,7.7vw,30px)] leading-none transition border border-[#8000FF]">Start New Game</button>
-                 <button onClick={() => setPlayerState('load_menu')} className="w-full bg-[#9457EB33]/20 hover:bg-[#9457EB33] text-white font-bold font-markazi py-3.5 rounded-lg text-[clamp(22px,7.7vw,30px)] leading-none transition border border-[#8000FF]">Load Game</button>
-                 <button onClick={() => setCurrentView('game_detail')} className="w-full bg-[#9457EB33]/20 hover:bg-[#9457EB33] text-white font-bold font-markazi py-3.5 rounded-lg text-[clamp(22px,7.7vw,30px)] leading-none transition border border-[#8000FF]">Exit</button>
+            <div className="relative z-10 w-full h-full flex flex-col justify-between
+                            pt-[max(1.5rem,env(safe-area-inset-top))]
+                            pb-[max(1.5rem,env(safe-area-inset-bottom))]
+                            pl-[max(2rem,env(safe-area-inset-left))]
+                            pr-[max(2rem,env(safe-area-inset-right))]">
+               <div className="flex-1 flex items-center min-h-0">
+                 <h1 className="text-[clamp(30px,11vh,72px)] leading-[1.05] font-markazi font-bold text-white drop-shadow-xl break-words max-w-[70%]">
+                   {selectedGame?.title || 'Visual Novel'}
+                 </h1>
+               </div>
+
+               <div className="w-full max-w-[min(70vw,300px)] space-y-[clamp(0.4rem,1.5vh,0.75rem)] flex-shrink-0">
+                 <button onClick={() => { setSequenceIndex(0); setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id); setPlayerState('playing'); }} className={`${menuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Start New Game</button>
+                 <button onClick={() => setPlayerState('load_menu')} className={`${menuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Load Game</button>
+                 <button onClick={() => setCurrentView('game_detail')} className={`${menuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Exit</button>
                </div>
             </div>
           )}
 
-          {/* PAUSED — more transparent, all buttons uniform glass style, centered */}
+          {/* PAUSED — five buttons is the tightest stack in the app. Sizes are
+              deliberately smaller than the main menu so the whole set clears
+              a 411px-tall viewport without scrolling; it still scrolls as a
+              fallback on anything shorter. */}
           {playerState === 'paused' && (
-            <div className="relative z-10 flex flex-col items-center justify-center w-full h-full overflow-y-auto px-6 py-[max(1.5rem,env(safe-area-inset-top))] bg-black/30 backdrop-blur-[2px]">
-               <h1 className="text-[clamp(22px,4vw,34px)] font-serif font-bold text-white mb-8 drop-shadow-xl text-center px-4 break-words">{selectedGame?.title || 'Visual Novel'}</h1>
-               <div className="space-y-3 w-full max-w-[min(80vw,300px)]">
-                 <button onClick={() => setPlayerState('playing')} className="w-full bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/80 text-white font-bold font-markazi py-3.5 rounded-lg text-[clamp(20px,7.2vw,28px)] leading-none transition border border-[#8000FF] shadow-sm">Resume</button>
-                 <button onClick={() => { setSequenceIndex(0); setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id); setPlayerState('playing'); }} className="w-full bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/800 text-white font-bold font-markazi py-3.5 rounded-lg text-[clamp(20px,7.2vw,28px)] leading-none transition border border-[#8000FF] shadow-sm">Start New Game</button>
-                 <button onClick={() => setPlayerState('save_menu')} className="w-full bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/80 text-white font-bold font-markazi py-3.5 rounded-lg text-[clamp(20px,7.2vw,28px)] leading-none transition border border-[#8000FF] shadow-sm">Save Game</button>
-                 <button onClick={() => setPlayerState('load_menu')} className="w-full bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/80 text-white font-bold font-markazi py-3.5 rounded-lg text-[clamp(20px,7.2vw,28px)] leading-none transition border border-[#8000FF] shadow-sm">Load Game</button>
-                 <button onClick={() => setCurrentView('game_detail')} className="w-full bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/80 text-white font-bold font-markazi py-3.5 rounded-lg text-[clamp(20px,7.2vw,28px)] leading-none transition border border-[#8000FF] shadow-sm">Exit</button>
+            <div className="relative z-10 w-full h-full flex flex-col items-center justify-center overflow-y-auto
+                            px-6
+                            py-[max(1rem,env(safe-area-inset-top))]
+                            bg-black/30 backdrop-blur-[2px]">
+               <h1 className="text-[clamp(18px,5vh,34px)] font-serif font-bold text-white mb-[clamp(0.5rem,2.5vh,2rem)] drop-shadow-xl text-center px-4 break-words flex-shrink-0">
+                 {selectedGame?.title || 'Visual Novel'}
+               </h1>
+
+               <div className="w-full max-w-[min(70vw,300px)] space-y-[clamp(0.35rem,1.3vh,0.75rem)] flex-shrink-0">
+                 <button onClick={() => setPlayerState('playing')} className={`${menuBtn} bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/80 shadow-sm`}>Resume</button>
+                 <button onClick={() => { setSequenceIndex(0); setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id); setPlayerState('playing'); }} className={`${menuBtn} bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/80 shadow-sm`}>Start New Game</button>
+                 <button onClick={() => setPlayerState('save_menu')} className={`${menuBtn} bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/80 shadow-sm`}>Save Game</button>
+                 <button onClick={() => setPlayerState('load_menu')} className={`${menuBtn} bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/80 shadow-sm`}>Load Game</button>
+                 <button onClick={() => setCurrentView('game_detail')} className={`${menuBtn} bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/80 shadow-sm`}>Exit</button>
                </div>
             </div>
           )}
 
-          {/* STORY END — reached a genuine ending (no valid next scene / no choices).
-              Fixes the "loops back to the beginning near the last scenes" bug: an
-              unresolved next_scene_default or choice target is now treated as an
-              ending instead of silently falling back to scenes[0]. */}
+          {/* STORY END — reached a genuine ending (no valid next scene / no
+              choices). Treats an unresolved next_scene_default or choice
+              target as an ending rather than falling back to scenes[0]. */}
           {playerState === 'story_end' && (
-            <div className="relative z-10 flex flex-col items-center justify-center w-full h-full overflow-y-auto px-8 pb-[max(4rem,calc(env(safe-area-inset-bottom)+2rem))] pt-8 text-center bg-black/40 backdrop-blur-[2px]">
-               <h1 className="text-[clamp(30px,10.7vw,42px)] font-markazi font-bold text-white mb-4 drop-shadow-xl">The End</h1>
-               <p className="text-purple-200 font-markazi text-[clamp(17px,5.6vw,22px)] leading-relaxed max-w-xs mx-auto mb-10">
+            <div className="relative z-10 w-full h-full flex flex-col items-center justify-center overflow-y-auto text-center
+                            px-8
+                            py-[max(1rem,env(safe-area-inset-top))]
+                            bg-black/40 backdrop-blur-[2px]">
+               <h1 className="text-[clamp(24px,7vh,44px)] font-markazi font-bold text-white mb-[clamp(0.4rem,1.5vh,1rem)] drop-shadow-xl flex-shrink-0">The End</h1>
+               <p className="text-purple-200 font-markazi text-[clamp(14px,4vh,22px)] leading-snug max-w-md mx-auto mb-[clamp(0.75rem,3vh,2.5rem)] flex-shrink-0">
                  You've reached the end of this path. Thanks for playing {selectedGame?.title || 'this story'}.
                </p>
-               <div className="space-y-3 w-full max-w-[min(80vw,300px)]">
-                 <button onClick={() => { setSequenceIndex(0); setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id); setPlayerState('playing'); }} className="w-full bg-[#9457EB33]/20 hover:bg-[#9457EB33] text-white font-bold font-markazi py-3.5 rounded-lg text-[clamp(20px,7.2vw,28px)] leading-none transition border border-[#8000FF]">Play Again</button>
-                 <button onClick={() => setCurrentView('game_detail')} className="w-full bg-[#9457EB33]/20 hover:bg-[#9457EB33] text-white font-bold font-markazi py-3.5 rounded-lg text-[clamp(20px,7.2vw,28px)] leading-none transition border border-[#8000FF]">Exit</button>
+               <div className="w-full max-w-[min(70vw,300px)] space-y-[clamp(0.35rem,1.3vh,0.75rem)] flex-shrink-0">
+                 <button onClick={() => { setSequenceIndex(0); setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id); setPlayerState('playing'); }} className={`${menuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Play Again</button>
+                 <button onClick={() => setCurrentView('game_detail')} className={`${menuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Exit</button>
                </div>
             </div>
           )}
 
-          {/* SAVE MENU — title centered top, uniform glass slots, Back button bottom-right */}
+          {/* SAVE MENU — header and footer are flex-shrink-0, the slot list is
+              the only thing that scrolls, so Back is always reachable. */}
           {playerState === 'save_menu' && (
-             <div className="relative z-10 flex flex-col w-full h-full px-6 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] bg-black/20 backdrop-blur-[2px]">
-                <h2 className="text-[clamp(23px,8.2vw,32px)] font-markazi font-bold text-white tracking-wide text-center mb-8 drop-shadow-md">Save Game</h2>
-                <div className="flex-1 overflow-y-auto space-y-3 pb-6 no-scrollbar">
+             <div className="relative z-10 flex flex-col w-full h-full
+                             px-[max(1.5rem,env(safe-area-inset-left))]
+                             pt-[max(0.75rem,env(safe-area-inset-top))]
+                             pb-[max(0.75rem,env(safe-area-inset-bottom))]
+                             bg-black/20 backdrop-blur-[2px]">
+                <h2 className="text-[clamp(18px,5vh,32px)] font-markazi font-bold text-white tracking-wide text-center mb-[clamp(0.4rem,1.5vh,2rem)] drop-shadow-md flex-shrink-0">Save Game</h2>
+                <div className="flex-1 min-h-0 overflow-y-auto space-y-[clamp(0.3rem,1vh,0.75rem)] pb-3 no-scrollbar">
                   {saveSlots.map((slot, idx) => (
-                    <button key={idx} onClick={() => setConfirmSaveIdx(idx)} className="w-full bg-purple-500/30 backdrop-blur-md hover:bg-purple-500/50 border border-purple-300/40 text-white text-left px-5 py-3.5 rounded-lg flex items-center gap-3 transition-all shadow-sm">
+                    <button key={idx} onClick={() => setConfirmSaveIdx(idx)} className="w-full bg-purple-500/30 backdrop-blur-md hover:bg-purple-500/50 border border-purple-300/40 text-white text-left px-4 py-[clamp(0.35rem,1.4vh,0.875rem)] rounded-lg flex items-center gap-3 transition-all shadow-sm">
                       <Save className="w-4 h-4 text-white flex-shrink-0" />
-                      <span className="font-bold font-serif text-[15px] flex-shrink-0">Slot {idx + 1}</span>
-                      <span className="text-[12px] text-purple-100/80 font-medium min-w-0 truncate">{slot ? `Playtime : ${slot.date}` : 'Empty Save Slot'}</span>
+                      <span className="font-bold font-serif text-[clamp(12px,3.4vh,15px)] flex-shrink-0">Slot {idx + 1}</span>
+                      <span className="text-[clamp(10px,2.8vh,12px)] text-purple-100/80 font-medium min-w-0 truncate">{slot ? `Playtime : ${slot.date}` : 'Empty Save Slot'}</span>
                     </button>
                   ))}
                 </div>
-                <div className="flex justify-end">
-                  <button onClick={() => setPlayerState('paused')} className="bg-purple-500/30 backdrop-blur-md hover:bg-purple-500/50 border border-purple-300/40 text-white font-bold font-serif px-8 py-2.5 rounded-lg text-[15px] transition">Back</button>
+                <div className="flex justify-end flex-shrink-0 pt-2">
+                  <button onClick={() => setPlayerState('paused')} className="bg-purple-500/30 backdrop-blur-md hover:bg-purple-500/50 border border-purple-300/40 text-white font-bold font-serif px-8 py-[clamp(0.3rem,1.2vh,0.625rem)] rounded-lg text-[clamp(12px,3.4vh,15px)] transition">Back</button>
                 </div>
              </div>
           )}
 
-          {/* SAVE CONFIRMATION — matched to screenshot */}
+          {/* SAVE CONFIRMATION */}
           {confirmSaveIdx !== null && (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm px-6">
-              <div className="w-full max-w-[min(88vw,320px)] flex flex-col items-center">
-                <h2 className="text-[clamp(26px,9.2vw,36px)] font-serif font-bold text-white text-center mb-3 drop-shadow-md">Save Game</h2>
-                <p className="text-white font-bold font-markazi text-center text-[clamp(16px,5.4vw,21px)] mb-6 leading-snug">
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm px-6 py-4 overflow-y-auto">
+              <div className="w-full max-w-[min(80vw,320px)] flex flex-col items-center">
+                <h2 className="text-[clamp(20px,6vh,36px)] font-serif font-bold text-white text-center mb-[clamp(0.25rem,1vh,0.75rem)] drop-shadow-md">Save Game</h2>
+                <p className="text-white font-bold font-markazi text-center text-[clamp(13px,3.8vh,21px)] mb-[clamp(0.5rem,2vh,1.5rem)] leading-snug">
                   Do you want to save your progress in slot {confirmSaveIdx + 1}?
                 </p>
                 <div className="w-full rounded-lg border border-purple-300/40 overflow-hidden bg-purple-500/30 backdrop-blur-md">
                   <button
                     onClick={() => { handleSaveSlot(confirmSaveIdx); setConfirmSaveIdx(null); }}
-                    className="w-full py-3 font-bold font-markazi text-white border-b border-purple-300/30 hover:bg-purple-500/50 transition"
+                    className="w-full py-[clamp(0.35rem,1.4vh,0.75rem)] text-[clamp(13px,3.6vh,18px)] font-bold font-markazi text-white border-b border-purple-300/30 hover:bg-purple-500/50 transition"
                   >
                     Yes
                   </button>
                   <button
                     onClick={() => setConfirmSaveIdx(null)}
-                    className="w-full py-3 font-bold font-markazi text-white hover:bg-purple-500/50 transition"
+                    className="w-full py-[clamp(0.35rem,1.4vh,0.75rem)] text-[clamp(13px,3.6vh,18px)] font-bold font-markazi text-white hover:bg-purple-500/50 transition"
                   >
                     No
                   </button>
@@ -1512,76 +1548,107 @@ export default function App() {
             </div>
           )}
 
-          {/* LOAD MENU — same treatment as Save Menu, no confirmation step (unchanged behavior) */}
+          {/* LOAD MENU — same structure as Save, no confirmation step */}
           {playerState === 'load_menu' && (
-             <div className="relative z-10 flex flex-col w-full h-full px-6 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] bg-black/20 backdrop-blur-[2px]">
-                <h2 className="text-[clamp(20px,6.7vw,26px)] font-serif font-bold text-white tracking-wide text-center mb-8 drop-shadow-md">Load Game</h2>
-                <div className="flex-1 overflow-y-auto space-y-3 pb-6 no-scrollbar">
+             <div className="relative z-10 flex flex-col w-full h-full
+                             px-[max(1.5rem,env(safe-area-inset-left))]
+                             pt-[max(0.75rem,env(safe-area-inset-top))]
+                             pb-[max(0.75rem,env(safe-area-inset-bottom))]
+                             bg-black/20 backdrop-blur-[2px]">
+                <h2 className="text-[clamp(18px,5vh,32px)] font-serif font-bold text-white tracking-wide text-center mb-[clamp(0.4rem,1.5vh,2rem)] drop-shadow-md flex-shrink-0">Load Game</h2>
+                <div className="flex-1 min-h-0 overflow-y-auto space-y-[clamp(0.3rem,1vh,0.75rem)] pb-3 no-scrollbar">
                   {saveSlots.map((slot, idx) => (
-                    <button key={idx} disabled={!slot} onClick={() => handleLoadSlot(idx)} className="w-full bg-purple-500/30 backdrop-blur-md hover:bg-purple-500/50 border border-purple-300/40 text-white text-left px-5 py-3.5 rounded-lg flex items-center gap-3 transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-purple-500/30">
+                    <button key={idx} disabled={!slot} onClick={() => handleLoadSlot(idx)} className="w-full bg-purple-500/30 backdrop-blur-md hover:bg-purple-500/50 border border-purple-300/40 text-white text-left px-4 py-[clamp(0.35rem,1.4vh,0.875rem)] rounded-lg flex items-center gap-3 transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-purple-500/30">
                       <Download className="w-4 h-4 text-white flex-shrink-0" />
-                      <span className="font-bold font-serif text-[15px] flex-shrink-0">Slot {idx + 1}</span>
-                      <span className="text-[12px] text-purple-100/80 font-medium min-w-0 truncate">{slot ? `Playtime : ${slot.date}` : 'No Save Data'}</span>
+                      <span className="font-bold font-serif text-[clamp(12px,3.4vh,15px)] flex-shrink-0">Slot {idx + 1}</span>
+                      <span className="text-[clamp(10px,2.8vh,12px)] text-purple-100/80 font-medium min-w-0 truncate">{slot ? `Playtime : ${slot.date}` : 'No Save Data'}</span>
                     </button>
                   ))}
                 </div>
-                <div className="flex justify-end">
-                  <button onClick={() => setPlayerState(storyData ? 'paused' : 'main_menu')} className="bg-purple-500/30 backdrop-blur-md hover:bg-purple-500/50 border border-purple-300/40 text-white font-bold font-serif px-8 py-2.5 rounded-lg text-[15px] transition">Back</button>
+                <div className="flex justify-end flex-shrink-0 pt-2">
+                  <button onClick={() => setPlayerState(storyData ? 'paused' : 'main_menu')} className="bg-purple-500/30 backdrop-blur-md hover:bg-purple-500/50 border border-purple-300/40 text-white font-bold font-serif px-8 py-[clamp(0.3rem,1.2vh,0.625rem)] rounded-lg text-[clamp(12px,3.4vh,15px)] transition">Back</button>
                 </div>
              </div>
           )}
 
-          {/* PLAYING — hamburger icon (no pill), dialogue & choice boxes restyled to match screenshots */}
+          {/* PLAYING */}
           {playerState === 'playing' && (
             <div className="relative z-10 w-full h-full flex flex-col overflow-hidden">
                <div className="absolute inset-0 z-0">
                   <img src={engineBg} className="w-full h-full object-cover" alt="Gameplay BG" />
                </div>
 
+               {/* Capped at 45% width so a tall portrait can never crowd the
+                   dialogue box on a narrow screen. */}
                {portraitUrl && (
                  <img
                    src={portraitUrl}
                    alt={currentSequenceBlock.speaker}
-                   className="absolute bottom-0 right-[max(1rem,env(safe-area-inset-right))] sm:right-12 h-[70%] max-h-[600px] max-w-[55%] object-contain drop-shadow-2xl z-30 pointer-events-none"
+                   className="absolute bottom-0 right-[max(1rem,env(safe-area-inset-right))] h-[68%] max-w-[45%] object-contain object-bottom drop-shadow-2xl z-30 pointer-events-none"
                  />
                )}
 
-               <button onClick={() => setPlayerState('paused')} className="absolute top-[max(1rem,env(safe-area-inset-top))] left-[max(1rem,env(safe-area-inset-left))] z-50 p-2 hover:bg-white/10 rounded-md transition">
-                  <Menu className="w-7 h-7 text-white" strokeWidth={2.5} />
+               <button onClick={() => setPlayerState('paused')} className="absolute top-[max(0.5rem,env(safe-area-inset-top))] left-[max(0.5rem,env(safe-area-inset-left))] z-50 p-2 bg-black/30 hover:bg-white/10 rounded-md transition">
+                  <Menu className="w-[clamp(20px,5.5vh,28px)] h-[clamp(20px,5.5vh,28px)] text-white" strokeWidth={2.5} />
                </button>
 
+               {/* Dead-end guard. handleChoice sets playerError when a choice
+                   points at a scene that doesn't exist; without this the state
+                   was set but never shown and the tap appeared to do nothing. */}
+               {playerError && (
+                 <div className="absolute inset-0 z-[55] flex flex-col items-center justify-center bg-black/70 px-8 text-center">
+                    <p className="text-white font-markazi font-bold text-[clamp(15px,4.5vh,24px)] mb-[clamp(0.5rem,2vh,1.5rem)]">{playerError}</p>
+                    <button onClick={() => { setPlayerError(null); setPlayerState('paused'); }} className="bg-[#9457EB] hover:bg-[#7C3AED] text-white font-bold font-markazi px-8 py-[clamp(0.35rem,1.4vh,0.75rem)] rounded-lg text-[clamp(13px,3.8vh,20px)] transition">
+                      Back to Menu
+                    </button>
+                 </div>
+               )}
+
                {(!isEndOfSequence || !(currentScene.choices && currentScene.choices.length > 0)) ? (
-                 <div className="mt-auto relative z-40 px-[max(1rem,env(safe-area-inset-left))] pb-[max(1.5rem,calc(env(safe-area-inset-bottom)+0.5rem))] w-full flex justify-center cursor-pointer" onClick={advanceStory}>
+                 <div className="mt-auto relative z-40 w-full flex justify-center cursor-pointer
+                                 px-[max(0.75rem,env(safe-area-inset-left))]
+                                 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+                      onClick={advanceStory}>
                     <div className="relative w-full max-w-3xl">
+                       {/* Speaker badge sits in flow above the box rather than
+                           absolutely offset, so it can't be clipped off the
+                           top of a short viewport. */}
                        {currentSequenceBlock.speaker && (
-                         <div className="absolute -top-9 left-6 max-w-[70%] truncate bg-[#9457EB] text-white font-markazi font-bold px-5 py-1.5 rounded-xl shadow-lg z-50 text-[clamp(18px,6.4vw,25px)] tracking-wide">
+                         <div className="inline-block max-w-[60%] truncate bg-[#9457EB] text-white font-markazi font-bold px-4 py-1 rounded-t-xl shadow-lg text-[clamp(13px,3.8vh,25px)] tracking-wide">
                            {currentSequenceBlock.speaker}
                          </div>
                        )}
 
-                       <div className="bg-[#000228]/60 border-2 border-[#8B5CF6]/70 w-full min-h-[110px] rounded-xl p-5 pt-7 pb-7 text-white font-markazi text-[clamp(16px,5.4vw,21px)] leading-relaxed shadow-[0_0_30px_rgba(0,0,0,0.8)] relative break-words">
+                       <div className={`bg-[#000228]/60 border-2 border-[#8B5CF6]/70 w-full rounded-xl ${currentSequenceBlock.speaker ? 'rounded-tl-none' : ''} px-5 py-[clamp(0.6rem,2.2vh,1.75rem)] pr-12 text-white font-markazi text-[clamp(13px,4vh,21px)] leading-snug shadow-[0_0_30px_rgba(0,0,0,0.8)] relative break-words max-h-[42vh] overflow-y-auto no-scrollbar`}>
                           <span className={currentSequenceBlock.type === 'narrative' ? 'italic text-[#D8B4FE]' : 'text-gray-100'}>
                              {currentSequenceBlock.text || 'The silent dark city envelops you...'}
                           </span>
+                       </div>
 
-                          <div className="absolute -bottom-0 right-5 bg-white w-7 h-7 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105">
-                            <ArrowRight className="w-4 h-4 text-[#4C1D95]" strokeWidth={3} />
-                          </div>
+                       {/* Moved outside the scrolling box so it stays pinned
+                           while long dialogue scrolls underneath. */}
+                       <div className="absolute bottom-2 right-3 bg-white w-[clamp(20px,5vh,28px)] h-[clamp(20px,5vh,28px)] rounded-full flex items-center justify-center shadow-lg pointer-events-none">
+                         <ArrowRight className="w-[60%] h-[60%] text-[#4C1D95]" strokeWidth={3} />
                        </div>
                     </div>
                  </div>
                ) : (
-                    <div className="mt-auto relative z-40 px-[max(1rem,env(safe-area-inset-left))] pb-[max(2rem,calc(env(safe-area-inset-bottom)+1rem))] w-full flex justify-center">
-                      <div className="w-full max-w-3xl bg-[#000228]/60 border-2 border-[#9457EB]/70 rounded-2xl p-5 shadow-[0_0_40px_rgba(0,0,0,0.9)]">
-                        <p className="text-white text-[clamp(14px,4.1vw,16px)] font-medium mb-4 leading-relaxed">
+                    <div className="mt-auto relative z-40 w-full flex justify-center
+                                    px-[max(0.75rem,env(safe-area-inset-left))]
+                                    pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                      <div className="w-full max-w-3xl bg-[#000228]/60 border-2 border-[#9457EB]/70 rounded-2xl p-[clamp(0.6rem,2vh,1.25rem)] shadow-[0_0_40px_rgba(0,0,0,0.9)] max-h-[70vh] overflow-y-auto no-scrollbar">
+                        <p className="text-white text-[clamp(12px,3.4vh,16px)] font-medium mb-[clamp(0.4rem,1.5vh,1rem)] leading-snug">
                           {currentScene.choice_prompt || "What do you think would be the best argument?"}
                         </p>
-                        <div className="grid grid-cols-1 xs:grid-cols-2 gap-3">
+                        {/* auto-fit means 2+ columns on a wide landscape screen
+                            and a single column when narrow — no breakpoint
+                            guesswork, and long choice text never gets crushed. */}
+                        <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-[clamp(0.35rem,1.2vh,0.75rem)]">
                           {currentScene.choices.map((choice, idx) => (
                             <button
                               key={idx}
                               onClick={() => handleChoice(choice.next_scene)}
-                              className="bg-[#2D1B4E]/70 hover:bg-[#9457EB] border border-[#9457EB]/60 text-white font-semibold py-3 px-4 rounded-lg shadow-sm transition-all text-[clamp(12px,3.6vw,14px)] text-center leading-tight break-words active:scale-[0.98]"
+                              className="bg-[#2D1B4E]/70 hover:bg-[#9457EB] border border-[#9457EB]/60 text-white font-semibold py-[clamp(0.35rem,1.4vh,0.75rem)] px-3 rounded-lg shadow-sm transition-all text-[clamp(11px,3.2vh,14px)] text-center leading-tight break-words active:scale-[0.98]"
                             >
                               {choice.text}
                             </button>

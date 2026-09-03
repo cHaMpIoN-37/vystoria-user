@@ -8,7 +8,7 @@ import {
   LogOut, Trash2, Mail, CheckCircle2, Settings, Loader2,
   Menu, ArrowLeft, Save, Download, Check, Bookmark,
   Edit3, Camera, Heart, ThumbsUp, ThumbsDown, Copy,
-  ArrowRight, Undo2
+  ArrowRight, Undo2, ChevronRight
 } from 'lucide-react';
 
 
@@ -40,25 +40,74 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 // --- YOUR CUSTOM ASSETS ---
 import backIcon from './assets/back.svg';
 import logoUrl from './assets/logo.png';
-import homeIcon from './assets/home.svg';
-import libraryIcon from './assets/library.svg';
-import trophyIcon from './assets/trophy.svg';
-import profileIcon from './assets/profile.svg';
 import empLib from './assets/empty-library.svg';
 import supp from './assets/support.svg';
+import initBg from './assets/init_bg.png';
+import authBg from './assets/Auth_bg.png';
+import mailIcon from './assets/Frame.svg';
+import GoogleIcon from './assets/google.svg';
+import noSearchIcon from './assets/no_search.svg';
+import rightArrowIcon from './assets/right arrow.svg';
+import helpIcon from './assets/Help Icon.svg';
+import logoutIcon from './assets/Logout Icon.png';
+import deleteIcon from './assets/Delete Icon.png';
+import mailIcon1 from './assets/mailIcon1.png';
+//import navHomeIcon from './assets/homee.svg';
+//import navTrophyIcon from './assets/trophy.svg';
+import navLibraryIcon from './assets/library.svg';
+//import navProfileIcon from './assets/profile.svg';
+
+// Achievements artwork
+import trophyHero from './assets/Vystoria_Trophy_Transparent 1.png';
+import achStoryJourney from './assets/01_Story_Journey 1.png';
+import achEndingsReplay from './assets/02_Endings_and_Replay 1.png';
+import achExploration from './assets/03_Vystoria_Compass_Transparent 1.png';
+import achCompletionist from './assets/04_Completionist 1.png';
+import achCommunity from './assets/05_Vystoria_Feedback_Transparent 1.png';
+// Home screen chrome
+import homeLogo from './assets/Logo1.png';
+//import searchIcon from './assets/search1.png';
+import choiceBranchIcon from './assets/Choice Branch Icon.svg';
+//import bookmarkButton from './assets/Bookmark Button.png';
+
+// Nav bar — each tab ships an inactive (grey) and active (purple) variant,
+// so NavBtn swaps the file instead of trying to recolour a PNG with CSS.
+
+//import homeOff    from './assets/home1.png';
+//import homeOn     from './assets/home2.png';
+//import trophyOff  from './assets/Trophy1.png';
+//import trophyOn   from './assets/Trophy2.png';
+//import libraryOff from './assets/Library1.png';
+//import libraryOn  from './assets/Library2.png';
+//import profileOff from './assets/Profile1.png';
+//import profileOn  from './assets/Profile2.png';
+
 import { FcGoogle } from "react-icons/fc";
 import { Search, ChevronDown } from 'lucide-react';
 
 const ICONS = {
   back: backIcon,
-  navLibrary: libraryIcon,
-  navHome: homeIcon,
-  navAchievements: trophyIcon,
-  navProfile: profileIcon,
+  logo: homeLogo,
+  choiceBranch: choiceBranchIcon,
   emptyLibrary: empLib,
   support: supp,
-  logout: null,
-  deleteAccount: null,
+  noSearch: noSearchIcon,
+  rightArrow: rightArrowIcon,
+  help: helpIcon,
+  logout: logoutIcon,
+  deleteAccount: deleteIcon,
+  //navHome: navHomeIcon,
+  //navAchievements: navTrophyIcon,
+  navLibrary: navLibraryIcon,
+  //navProfile: navProfileIcon,
+  //search: searchIcon,
+  //bookmark: bookmarkButton,
+
+  // Nav tabs: { off, on } pairs consumed by NavBtn.
+  //navHome:         { off: homeOff,    on: homeOn },
+  //navAchievements: { off: trophyOff,  on: trophyOn },
+  //navLibrary:      { off: libraryOff, on: libraryOn },
+  //navProfile:      { off: profileOff, on: profileOn },
 };
 
 const MOCK_GAMES = [
@@ -197,6 +246,7 @@ export default function App() {
   const [showAccNotFound, setShowAccNotFound] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [emailCopied, setEmailCopied] = useState(false);
+  const [supportCopied, setSupportCopied] = useState(false);
 
   const [playerState, setPlayerState] = useState('main_menu');
   const [saveSlots, setSaveSlots] = useState(Array(8).fill(null));
@@ -209,41 +259,62 @@ export default function App() {
   const [playerError, setPlayerError] = useState(null);
 
   const [sortBy, setSortBy] = useState('recentlyAdded');
+  const [libraryFilter, setLibraryFilter] = useState('all');   // 'all' | 'in_progress' | 'saved' | 'completed'
 
   const [confirmSaveIdx, setConfirmSaveIdx] = useState(null); // slot index awaiting "Do you want to save?" confirmation
 
-  const fetchCloudGames = async (activeUser = user) => {
+    const fetchCloudGames = async (activeUser = user) => {
     try {
-      const { data, error } = await supabase.from('stories').select('*').order('created_at', { ascending: false });
-      if (data) {
-        let progressMap = {};
-        if (activeUser) {
-          const { data: progressRows } = await supabase
-            .from('user_progress')
-            .select('story_id, progress_percent')
-            .eq('user_id', activeUser.id);
-          if (progressRows) progressRows.forEach(r => { progressMap[r.story_id] = r.progress_percent || 0; });
-        }
+      const { data, error } = await supabase
+        .from('stories')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      if (!data) return;
 
-        const games = data.map((story, i) => {
-          const filename = story.url.substring(story.url.lastIndexOf('/') + 1);
-          return {
-            id: story.id,
-            title: story.title,
-            filename: filename,
-            genre: story.genre || 'Uncategorized',
-            coverImage: story.cover_image || MOCK_GAMES[i % MOCK_GAMES.length].coverImage,
-            bgImage: MOCK_GAMES[i % MOCK_GAMES.length].bgImage,
-            likes: story.likes || 0,
-            dislikes: story.dislikes || 0,
-            isCloud: true,
-            progress: progressMap[story.id] || 0,
-            search_count: story.search_count || 0,
-            assets: story.assets || {}
-          };
-        });
-        setCloudGames(games);
+      // story_id -> { percent, updatedAt }. updatedAt drives the ordering of
+      // the "Continue your story" rail; without it the rail is arbitrary.
+      const progressMap = {};
+      if (activeUser) {
+        const { data: progressRows } = await supabase
+          .from('user_progress')
+          .select('story_id, progress_percent, updated_at')
+          .eq('user_id', activeUser.id);
+        if (progressRows) {
+          progressRows.forEach(r => {
+            progressMap[r.story_id] = {
+              percent: r.progress_percent || 0,
+              updatedAt: r.updated_at || null,
+            };
+          });
+        }
       }
+
+      const games = data.map((story, i) => {
+        const filename = story.url.substring(story.url.lastIndexOf('/') + 1);
+        const prog = progressMap[story.id] || {};
+        return {
+          id: story.id,
+          title: story.title,
+          subtitle: story.subtitle || '',
+          description: story.description || '',
+          filename: filename,
+          genre: story.genre || 'Uncategorized',
+          coverImage: story.cover_image || MOCK_GAMES[i % MOCK_GAMES.length].coverImage,
+          bgImage: MOCK_GAMES[i % MOCK_GAMES.length].bgImage,
+          likes: story.likes || 0,
+          dislikes: story.dislikes || 0,
+          isCloud: true,
+          isFeatured: !!story.is_featured,
+          trendingScore: Number(story.trending_score) || 0,
+          playCount: story.play_count || 0,
+          progress: prog.percent || 0,
+          lastPlayedAt: prog.updatedAt || null,
+          search_count: story.search_count || 0,
+          assets: story.assets || {}
+        };
+      });
+      setCloudGames(games);
     } catch (err) {
       console.error("Error loading cloud games:", err);
     }
@@ -406,11 +477,21 @@ export default function App() {
     }
   };
 
+
+
   const handleCopyEmail = () => {
     if (!user?.email) return;
     navigator.clipboard?.writeText(user.email);
     setEmailCopied(true);
     setTimeout(() => setEmailCopied(false), 1500);
+  };
+
+  const SUPPORT_EMAIL = 'darkcity.atelier@gmail.com';
+
+  const handleCopySupportEmail = () => {
+    navigator.clipboard?.writeText(SUPPORT_EMAIL);
+    setSupportCopied(true);
+    setTimeout(() => setSupportCopied(false), 1500);
   };
 
   const handleSearchResultClick = async (game) => {
@@ -668,229 +749,360 @@ export default function App() {
   };
 
   const renderInitScreen = () => (
-  <div className="flex flex-col h-full bg-[#11111E] text-white text-center items-center justify-center font-spartan">
-    <div className="w-[min(52vw,13rem)] h-[min(52vw,13rem)] mb-1 relative flex items-center justify-center">
-      <img src={logoUrl} alt="Vystoria logo" className="w-full h-full object-contain" />
+  <div className="relative flex flex-col h-full bg-[#11111E] text-white text-center items-center justify-center overflow-hidden">
+
+    {/* Background */}
+    <div className="absolute inset-0 z-0">
+      <img
+        src={authBg}
+        alt=""
+        aria-hidden="true"
+        className="w-full h-full object-cover object-center"
+      />
     </div>
-    <h1 className="text-[clamp(34px,11.4vw,48px)] font-bold tracking-wide -mt-4">Vystoria</h1>
+
+    {/* Content */}
+    <div className="relative z-10 flex flex-col items-center justify-center">
+      <div className="w-[min(52vw,13rem)] h-[min(52vw,13rem)] mb-1 relative flex items-center justify-center">
+        <img src={logoUrl} alt="Vystoria logo" className="w-full h-full object-contain" />
+      </div>
+      <h1
+        className="font-fraunces font-bold text-white tracking-wide -mt-4"
+        style={{ fontSize: 'clamp(1.9rem, 8.5vw, 2.6rem)' }}
+      >
+        Vystoria
+      </h1>
+    </div>
   </div>
 );
 
-  const renderSplash = () => (
-    <div className="flex flex-col h-full relative bg-[#050511] text-white font-spartan">
+    const renderSplash = () => (
+    <div className="flex flex-col h-full relative bg-[#0B0B14] text-white overflow-hidden">
+      {/* Artwork */}
       <div className="absolute inset-0 z-0">
-        <img src="https://images.unsplash.com/photo-1542204165-65bf26472b9b?q=80&w=1000&auto=format&fit=crop" alt="bg" className="w-full h-full object-cover opacity-40" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#050511] via-[#050511]/80 to-transparent"></div>
+        <img
+          src={initBg}
+          alt=""
+          aria-hidden="true"
+          className="w-full h-full object-cover object-top"
+        />
+        {/* Scrim so the copy stays legible over the illustration */}
+        
       </div>
-      <div className="relative z-10 flex flex-col items-start justify-end h-full pb-[calc(5rem+env(safe-area-inset-bottom))] px-[max(2rem,env(safe-area-inset-left))] text-left">
-        <h1 className="text-[clamp(26px,8.6vw,36px)] font-bold text-purple-500 mb-2 leading-[1] tracking-wide"><br/><span className="text-white">Journey Beyond Reality</span></h1>
-        <p className="text-[clamp(15px,4.3vw,18px)] font-orelega text-gray-400 mb-10 mt-4 leading-[1.1]">Interactive stories where every choice creates a new adventure.</p>
-        <button onClick={() => { setAuthError(null); setAuthMessage(null); setCurrentView('auth'); }} className="w-full min-h-[60px] px-4 bg-[#9457EB] hover:bg-[#4C1D95] text-white font-markazi font-bold py-4 rounded-xl shadow-purple-900/50 transition-all text-[clamp(27px,9vw,38px)] leading-none tracking-wide justify-center items-center flex">
+
+      {/* Copy + CTA */}
+      <div
+        className="relative z-10 flex flex-col items-start justify-end h-full w-full px-6 text-left"
+        style={{
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + clamp(1.5rem, 5vh, 2.75rem))',
+          paddingLeft: 'calc(env(safe-area-inset-left, 0px) + 1.5rem)',
+          paddingRight: 'calc(env(safe-area-inset-right, 0px) + 1.5rem)',
+        }}
+      >
+        <h1
+          className="font-fraunces font-bold text-white leading-[1.05] tracking-[-0.01em]"
+          style={{ fontSize: 'clamp(1.9rem, 8.5vw, 2.6rem)' }}
+        >
+          Journey<br />Beyond Reality
+        </h1>
+
+        <p
+          className="font-manrope text-[#B9B4C9] mt-4 leading-[1.45]"
+          style={{ fontSize: 'clamp(0.9rem, 3.9vw, 1.05rem)' }}
+        >
+          Interactive stories where every choice<br className="hidden xs:inline" /> creates a new adventure.
+        </p>
+
+        <button
+          onClick={() => { setAuthError(null); setAuthMessage(null); setCurrentView('auth'); }}
+          className="w-full mt-8 min-h-[56px] flex items-center justify-center rounded-2xl
+                     bg-gradient-to-r from-[#7C3AED] to-[#9457EB]
+                     active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
+                     shadow-lg shadow-purple-900/40 transition-all
+                     font-manrope font-semibold text-white tracking-wide"
+          style={{ fontSize: 'clamp(1rem, 4.2vw, 1.15rem)' }}
+        >
           Get Started
         </button>
       </div>
     </div>
   );
 
-  const renderAuthEmail = () => (
-  <div className="flex flex-col h-full overflow-y-auto bg-[#141624] text-white px-4 pt-[max(5rem,calc(env(safe-area-inset-top)+1.5rem))] pb-[calc(2rem+env(safe-area-inset-bottom))]">
 
-    <h2 className="text-[clamp(30px,10vw,42px)] font-extrabold font-spartan leading-tight">
-      Ready to Play?
-    </h2>
 
-    <p className="mt-4 text-[clamp(21px,6.9vw,29px)] text-[#B5B5B5] font-markazi font-bold leading-[1.1]">
-      Enter email id to log in or create a new account.
-    </p>
+const renderAuthEmail = () => (
+  <div className="flex flex-col h-full relative bg-[#1A0F33] text-white overflow-hidden">
 
-    <div className="mt-8">
-      <label className="block text-[clamp(18px,5.7vw,24px)] font-markazi font-bold mb-3">
-        Email :
-      </label>
-
-      <input
-        type="email"
-        value={authEmail}
-        onChange={(e) => setAuthEmail(e.target.value)}
-        className="
-          w-full
-          h-14
-          min-h-[3.5rem]
-          text-[16px]
-          bg-[#5B3A93]
-          border-none
-          rounded-lg
-          px-3
-          text-white
-          placeholder:text-white/50
-          focus:outline-none
-        "
+    {/* Artwork */}
+    <div className="absolute inset-0 z-0">
+      <img
+        src={authBg}
+        alt=""
+        aria-hidden="true"
+        className="w-full h-full object-cover object-center"
       />
+      
     </div>
 
-    {authError && (
-      <p className="mt-2 text-xs text-red-400">
-        {authError}
+    {/* Content */}
+    <div
+      className="relative z-10 flex flex-col h-full w-full overflow-y-auto"
+      style={{
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + clamp(2.5rem, 8vh, 4.5rem))',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + clamp(1.5rem, 4vh, 2.5rem))',
+        paddingLeft: 'calc(env(safe-area-inset-left, 0px) + 1.25rem)',
+        paddingRight: 'calc(env(safe-area-inset-right, 0px) + 1.25rem)',
+      }}
+    >
+
+      <h2
+        className="font-fraunces font-bold text-white leading-[1.05] tracking-[-0.01em]"
+        style={{ fontSize: 'clamp(1.75rem, 7.5vw, 2.35rem)' }}
+      >
+        Ready to Play?
+      </h2>
+
+      <p
+        className="font-manrope text-[#C2BBD4] mt-3 leading-[1.45]"
+        style={{ fontSize: 'clamp(0.875rem, 3.8vw, 1rem)' }}
+      >
+        Enter email id to log in or create a new account.
       </p>
-    )}
 
-    <button
-      onClick={handleAuthContinue}
-      disabled={authLoading}
-      className="
-        mt-4
-        min-h-[3.5rem]
-        py-2
-        w-full
-        rounded-lg
-        font-bold
-        font-markazi
-        leading-none
-        text-[clamp(23px,7.6vw,32px)]
-        bg-gradient-to-r
-        from-[#9457EB]
-        to-[#A15DFF]
-        disabled:opacity-50
-        flex
-        items-center
-        justify-center
-      "
-    >
-      {authLoading ? (
-        <Loader2 className="w-5 h-8 animate-spin" />
-      ) : (
-        "Confirm"
+      <label
+        className="block font-manrope font-medium text-white mt-8 mb-3"
+        style={{ fontSize: 'clamp(0.9rem, 3.9vw, 1.05rem)' }}
+      >
+        Email Address:
+      </label>
+
+      <div className="relative w-full">
+        <img
+          src={mailIcon}
+          alt=""
+          aria-hidden="true"
+          className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 pointer-events-none"
+        />
+        <input
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          autoCapitalize="none"
+          autoCorrect="off"
+          value={authEmail}
+          onChange={(e) => setAuthEmail(e.target.value)}
+          className="w-full min-h-[52px] rounded-xl bg-[#E9E3F5] pl-14 pr-4
+                     font-manrope text-[#1A0F33] caret-[#7C3AED]
+                     placeholder:text-[#1A0F33]/40
+                     border border-transparent focus:border-[#9457EB]
+                     focus:outline-none transition-colors"
+          style={{ fontSize: 'clamp(0.95rem, 4vw, 1.05rem)' }}
+        />
+      </div>
+
+      {authError && (
+        <p className="mt-2 font-manrope text-xs text-red-400">
+          {authError}
+        </p>
       )}
-    </button>
 
-    <p className="text-center text-[clamp(15px,4.3vw,18px)] text-white font-markazi font-semibold my-5">
-      or
-    </p>
-
-    <button
-      className="
-        min-h-[3.5rem]
-        py-2
-        px-3
-        w-full
-        rounded-lg
-        bg-gradient-to-r
-        from-[#9457EB]
-        to-[#A15DFF]
-        flex
-        items-center
-        justify-center
-        gap-[clamp(0.5rem,3vw,1.25rem)]
-        font-bold
-        font-markazi
-        leading-none
-        text-[clamp(24px,8.1vw,34px)]
-        
-      "
-    >
-      <FcGoogle size={38} className="shrink-0" />
-
-      <span className="truncate">Sign-in with Google</span>
-    </button>
-
-    <p className="mt-12 text-center text-[clamp(15px,4.5vw,19px)] text-[#A6A6A6] leading-[1.35] font-markazi font-semibold">
-      By continuing, you agree to Vystoria's
-      <br />
-      <a
-        href="https://vystoria.app/terms"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="underline text-white"
+      <button
+        onClick={handleAuthContinue}
+        disabled={authLoading}
+        className="w-full mt-5 min-h-[52px] flex items-center justify-center rounded-xl
+                   bg-gradient-to-r from-[#7C3AED] to-[#9457EB]
+                   active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
+                   shadow-lg shadow-purple-900/40 transition-all
+                   disabled:opacity-50 disabled:cursor-not-allowed
+                   font-manrope font-semibold text-white tracking-wide"
+        style={{ fontSize: 'clamp(1rem, 4.2vw, 1.1rem)' }}
       >
-        Terms &amp; Conditions
-      </a>{" "}
-      and{" "}
-      <a
-        href="https://vystoria.app/privacy"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="underline text-white"
+        {authLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Confirm"}
+      </button>
+
+      <div className="flex items-center gap-4 my-6">
+        <span className="flex-1 h-px bg-white/20"></span>
+        <span
+          className="font-manrope text-white/70"
+          style={{ fontSize: 'clamp(0.85rem, 3.6vw, 0.95rem)' }}
+        >
+          or
+        </span>
+        <span className="flex-1 h-px bg-white/20"></span>
+      </div>
+
+      <button
+        className="w-full min-h-[52px] flex items-center justify-center gap-3 rounded-xl
+                   bg-white active:bg-[#EFEFEF] hover:bg-[#F7F7F7] transition-colors
+                   font-manrope font-semibold text-[#1A0F33]"
+        style={{ fontSize: 'clamp(0.95rem, 4vw, 1.05rem)' }}
       >
-        Privacy Policy
-      </a>.
-    </p>
+        <FcGoogle size={24} />
+        <span>Sign-in with Google</span>
+      </button>
+
+      <p
+        className="pt-10 text-center font-manrope text-[#B0A9C4] leading-[1.6]"
+        style={{ fontSize: 'clamp(0.75rem, 3.2vw, 0.85rem)' }}
+      >
+        By continuing, you agree to Vystoria's
+        <br />
+        <a 
+          href="https://vystoria.app/terms"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline text-white"
+        >
+          Terms &amp; Conditions
+        </a>{" "}
+        and{" "}
+        <a 
+          href="https://vystoria.app/privacy"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline text-white"
+        >
+          Privacy Policy
+        </a>.
+      </p>
+    </div>
   </div>
 );
 
   const renderAuthVerify = () => (
-    <div className="flex flex-col h-full overflow-y-auto bg-[#11111E] text-white px-6 pt-[max(3rem,calc(env(safe-area-inset-top)+1rem))] pb-[calc(1.5rem+env(safe-area-inset-bottom))] text-left font-spartan">
-      <BackButton className="mb-4 mt-0 border-0 bg-transparent size-[20px]" onClick={() => { setCurrentView('auth'); setAuthError(null); setAuthMessage(null); setAuthOtp(''); }} />
-      <h2 className="text-[clamp(32px,11.4vw,48px)] font-bold text-white mb-2 leading-[1] break-words">
+  <div className="flex flex-col h-full relative bg-[#1A0F33] text-white overflow-hidden">
+
+    {/* Artwork */}
+    <div className="absolute inset-0 z-0">
+      <img
+        src={authBg}
+        alt=""
+        aria-hidden="true"
+        className="w-full h-full object-cover object-center"
+      />
+    </div>
+
+    {/* Content */}
+    <div
+      className="relative z-10 flex flex-col h-full w-full overflow-y-auto px-6 text-left"
+      style={{
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + clamp(2.5rem, 8vh, 3rem))',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + clamp(1.5rem, 4vh, 2.5rem))',
+      }}
+    >
+      <BackButton
+        className="mb-4 mt-0 border-0 bg-transparent size-[20px]"
+        onClick={() => { setCurrentView('auth'); setAuthError(null); setAuthMessage(null); setAuthOtp(''); }}
+      />
+
+      <h2
+        className="font-fraunces font-bold text-white leading-[1.05] tracking-[-0.01em]"
+        style={{ fontSize: 'clamp(1.75rem, 7.5vw, 2.35rem)' }}
+      >
         {isNewAccount ? 'Create New Account' : `Welcome Back ${userMetadata.full_name || 'User'}`}
       </h2>
 
       <div className="space-y-4 w-full mt-6">
         <div>
-          <label className="text-[clamp(23px,7.6vw,32px)] font-markazi font-bold mb-2 block">Enter Verification Code :</label>
-          <p className="text-[clamp(18px,5.7vw,24px)] text-gray-400 mb-4 font-markazi leading-[1.1]">
+          
+          <p
+            className="font-manrope text-[#C2BBD4] mb-4 leading-[1.45]"
+            style={{ fontSize: 'clamp(0.875rem, 3.8vw, 1rem)' }}
+          >
             A verification code has been sent to your email address. Please check your inbox.
           </p>
-          <input 
-            type="text" 
-            value={authOtp} 
-            onChange={(e) => setAuthOtp(e.target.value)} 
-            className="w-full bg-[#2D1B4E] rounded-lg p-4 text-white text-center tracking-[0.4em] indent-[0.4em] text-[clamp(16px,4.5vw,18px)] focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]" 
+          <br />
+          <label
+            className="block font-manrope font-medium text-white mb-3"
+            style={{ fontSize: 'clamp(0.9rem, 3.9vw, 1.05rem)' }}
+          >
+            Enter Verification Code :
+          </label>
+          <input
+            type="text"
+            value={authOtp}
+            onChange={(e) => setAuthOtp(e.target.value)}
+            className="w-full min-h-[52px] rounded-xl bg-[#E9E3F5] px-4
+                       font-manrope text-[#1A0F33] caret-[#7C3AED] text-center
+                       tracking-[0.4em] indent-[0.4em]
+                       border border-transparent focus:border-[#9457EB]
+                       focus:outline-none transition-colors"
+            style={{ fontSize: 'clamp(0.95rem, 4vw, 1.05rem)' }}
           />
         </div>
-        
-        <button 
-          onClick={handleVerifyOtp} 
-          disabled={authLoading} 
-          className="w-full min-h-[3.5rem] bg-[#8B5CF6] hover:bg-[#7C3AED] text-white font-markazi text-[clamp(26px,8.6vw,36px)] leading-none font-bold py-3 rounded-lg mt-4 shadow-lg disabled:opacity-50 flex justify-center items-center tracking-wide"
+
+        <button
+          onClick={handleVerifyOtp}
+          disabled={authLoading}
+          className="w-full min-h-[52px] flex items-center justify-center rounded-xl
+                     bg-gradient-to-r from-[#7C3AED] to-[#9457EB]
+                     active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
+                     shadow-lg shadow-purple-900/40 transition-all
+                     disabled:opacity-50 disabled:cursor-not-allowed
+                     font-manrope font-semibold text-white tracking-wide mt-4"
+          style={{ fontSize: 'clamp(1rem, 4.2vw, 1.1rem)' }}
         >
-          {authLoading ? <Loader2 className="animate-spin w-5 h-5" /> : "Confirm"}
+          {authLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Confirm"}
         </button>
 
         {resendSuccess ? (
-          <p className="text-[clamp(15px,4.5vw,19px)] text-green-400 font-markazi font-bold flex items-center justify-center gap-2 mt-4">
+          <p
+            className="font-manrope font-bold text-green-400 flex items-center justify-center gap-2 mt-4"
+            style={{ fontSize: 'clamp(0.8rem, 3.4vw, 0.95rem)' }}
+          >
             <Check className="w-4 h-4" strokeWidth={3} />
             Verification code sent successfully !
           </p>
         ) : resendCountdown > 0 ? (
-          <p className="text-[clamp(15px,4.5vw,19px)] text-left mt-4 text-gray-400 font-markazi font-bold flex items-center justify-center">
-            Resend verification code in {resendCountdown} seconds.
+          <p
+            className="font-manrope font-medium text-[#B0A9C4] flex items-center justify-center text-center mt-4"
+            style={{ fontSize: 'clamp(0.8rem, 3.4vw, 0.95rem)' }}
+          >
+            Resend code in 00:{resendCountdown.toString().padStart(2, '0')}
           </p>
         ) : (
-          <p className="text-[clamp(16px,5vw,21px)] text-left mt-4 text-gray-400 font-markazi font-medium flex flex-wrap items-center justify-center text-center">
+          <p
+            className="font-manrope font-medium text-[#B0A9C4] flex flex-wrap items-center justify-center text-center mt-4"
+            style={{ fontSize: 'clamp(0.8rem, 3.4vw, 0.95rem)' }}
+          >
             Didn't get code? Check spam or{' '}
-            <button onClick={handleResendCode} disabled={authLoading} className="text-white underline font-markazi font-bold ml-1 disabled:opacity-50">
+            <button
+              onClick={handleResendCode}
+              disabled={authLoading}
+              className="text-white underline font-manrope font-bold ml-1 disabled:opacity-50"
+            >
               resend it.
             </button>
           </p>
         )}
       </div>
     </div>
-  );
+  </div>
+);
 
   const renderWelcome = () => (
-  <div className="relative h-full w-full overflow-hidden bg-[#0F1322]">
+  <div className="relative h-full w-full">
 
     {/* Background Image */}
     <img
-      src="https://images.unsplash.com/photo-1542204165-65bf26472b9b?q=80&w=1000&auto=format&fit=crop"
+      src={authBg}
       alt="Background"
       className="absolute inset-0 h-full w-full object-cover"
     />
-
-    {/* Dark Overlay */}
-    <div className="absolute inset-0 bg-[#111626]/75"></div>
 
     {/* Content */}
     <div className="relative z-10 flex h-full flex-col items-center justify-center text-center px-6">
 
       <h2
-        className="font-spartan font-bold text-[clamp(34px,11.4vw,48px)] text-white leading-none"
+        className="font-manrope font-normal text-white leading-none"
+        style={{ fontSize: 'clamp(1.1rem, 4.8vw, 1.4rem)' }}
       >
         Welcome
       </h2>
 
       <h1
-        className="mt-3 font-spartan font-bold text-[clamp(38px,15.2vw,64px)] font-extrabold text-white leading-[1.05] break-words max-w-full"
+        className="mt-3 font-fraunces font-bold text-white leading-[1.05] tracking-[-0.01em] break-words max-w-full"
+        style={{ fontSize: 'clamp(2.1rem, 9.5vw, 3.2rem)' }}
       >
         {userMetadata.full_name || "User"}
       </h1>
@@ -900,109 +1112,468 @@ export default function App() {
   </div>
 );
 
-  const renderHome = () => {
+    const renderHome = () => {
     const displayList = cloudGames.length > 0 ? cloudGames : MOCK_GAMES;
-    const featuredGame = displayList[0] || MOCK_GAMES[0];
- 
+
     const categories = [
-      { title: 'Horror', list: displayList.filter(g => g.genre?.toLowerCase().includes('horror')) },
-      { title: 'Scifi', list: displayList.filter(g => g.genre?.toLowerCase().includes('sci-fi') || g.genre?.toLowerCase().includes('action')) },
-      { title: 'Mystery', list: displayList.filter(g => g.genre?.toLowerCase().includes('mystery') || g.genre?.toLowerCase().includes('adventure')) }
+      { title: 'Horror',  list: displayList.filter(g => g.genre?.toLowerCase().includes('horror')) },
+      { title: 'Scifi',   list: displayList.filter(g => g.genre?.toLowerCase().includes('sci-fi') || g.genre?.toLowerCase().includes('action')) },
+      { title: 'Mystery', list: displayList.filter(g => g.genre?.toLowerCase().includes('mystery') || g.genre?.toLowerCase().includes('adventure')) },
     ];
- 
-    if (activeCategory) {
-    const activeList = categories.find(c => c.title === activeCategory)?.list || displayList;
-    return (
-      <div className="flex-1 overflow-y-auto pb-24 px-4 pt-6 bg-[#0B0B14] font-spartan">
-        {/* Header: Back + Search */}
-        <div className="flex items-center gap-3 mb-6">
-          <BackButton onClick={() => setActiveCategory(null)} />
-          <div className="flex-1 relative">
-            <input 
-              type="text" 
-              placeholder="Search" 
-              className="w-full bg-[#0B0B14] text-white rounded-full py-2.5 px-5 pr-12 text-sm focus:outline-none border border-[#8B5CF6] placeholder-gray-500"
-            />
-            <SearchIcon className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8B5CF6]" />
-          </div>
-        </div>
 
-        <div className="h-px w-full bg-[#FFFFFF]/30 mb-6"></div>
+    // Single entry point into game_detail so the view ping is never forgotten.
+    // record_story_view dedupes per user/story/hour server-side, so calling it
+    // on every tap is safe and we don't need to debounce here.
+    const openGame = (game) => {
+      setSelectedGame(game);
+      setCurrentView('game_detail');
+      if (game.isCloud) {
+        supabase.rpc('record_story_view', { story_id_input: game.id })
+          .then(({ error }) => { if (error) console.error('record_story_view failed:', error); });
+      }
+    };
 
-        {/* Category Badge */}
-        <div className="bg-[#8B5CF6] inline-flex items-center px-5 py-1.5 rounded-lg mb-6">
-          <h4 className="text-white font-bold text-sm tracking-wide">{activeCategory}</h4>
-        </div>
-
-        {/* Games Grid */}
-        <div className="grid grid-cols-2 gap-3">
-          {activeList.map((game) => (
-            <div 
-              key={game.id} 
-              className="aspect-[3/4] rounded-xl overflow-hidden relative cursor-pointer group"
-              onClick={() => { setSelectedGame(game); setCurrentView('game_detail'); }}
-            >
-              <img 
-                src={game.coverImage} 
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                alt={game.title} 
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
-              <div className="absolute bottom-0 left-0 p-3">
-                <h4 className="text-white text-xl font-bold tracking-wide leading-tight">{game.title}</h4>
-              </div>
-            </div>
-          ))}
-        </div>
+    const SectionHeader = ({ title, onViewAll }) => (
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h3
+          className="font-manrope font-semibold text-white tracking-wide"
+          style={{ fontSize: 'clamp(0.9rem, 3.9vw, 1.05rem)' }}
+        >
+          {title}
+        </h3>
+        <button
+          onClick={onViewAll}
+          className="flex items-center gap-1.5 font-manrope font-medium text-[#B65AFF]
+                     hover:text-[#FFFFFF] transition-colors flex-shrink-0"
+          style={{ fontSize: 'clamp(0.72rem, 3.1vw, 0.82rem)' }}
+        >
+          View all
+          <img src={ICONS.rightArrow} alt="" aria-hidden="true" className="w-4 h-4 object-contain" />
+        </button>
       </div>
     );
-  }
- 
-    return (
-      <div className="flex-1 overflow-y-auto pb-24 bg-[#0B0B14] font-spartan">
-        <div className="px-4 pt-4 pb-3">
-          <div className="rounded-full px-5 py-2.5 flex items-center justify-end border border-[#4C3A8A] bg-transparent cursor-pointer" onClick={() => setCurrentTab('search')}>
-            <SearchIcon className="text-[#8B5CF6] w-4 h-4" />
+
+    // ---------- CATEGORY DRILL-DOWN (unchanged behaviour, restyled) ----------
+    // ---------- CATEGORY DRILL-DOWN ("View all" target) ----------
+    if (activeCategory) {
+      const activeList = categories.find(c => c.title === activeCategory)?.list || displayList;
+
+      return (
+        <div className="flex-1 min-h-0 flex flex-col relative bg-[#1A0F33] text-white overflow-hidden font-manrope">
+
+          <div className="absolute inset-0 z-0">
+            <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
+            <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/70 via-[#0B0B14]/40 to-[#0B0B14]/80" />
           </div>
-        </div>
-        <div className="h-px w-full bg-[#9457EB]/30 mb-6"></div>
- 
-        <div className="px-4 space-y-8">
-        <div className="relative h-[clamp(320px,58vh,480px)] rounded-[2rem] overflow-hidden shadow-2xl cursor-pointer border border-[#1C1635]" onClick={() => { setSelectedGame(featuredGame); setCurrentView('game_detail'); }}>
-          <img src={featuredGame.coverImage} alt="Featured" className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent"></div>
-          <div className="absolute bottom-0 w-full p-6 flex flex-col items-start gap-2">
-            <span className="bg-white/25 text-white px-4 py-1.5 rounded-xl text-sm font-bold tracking-wide max-w-full truncate">{featuredGame.title}</span>
-            <span className="bg-white/25 text-white px-4 py-1.5 rounded-xl text-xs font-medium mb-4 max-w-full truncate">{featuredGame.filename || featuredGame.subtitle}</span>
-            <div className="w-full min-h-[50px] bg-white/25 border border-white/20 text-white py-3.5 rounded-xl font-markazi font-bold text-[clamp(22px,7.1vw,30px)] leading-none flex justify-center items-center transition tracking-wide">
-              Play
-            </div>
-          </div>
-        </div>
- 
-        {categories.map((category, idx) => (
-          <div key={idx} className="pt-2">
-            <div className="flex justify-between items-center mb-4">
-              <h4 className="bg-[#9457EB33] text-white px-4 py-1.5 rounded-xl font-semibold text-base tracking-wide">{category.title}</h4>
-              <button onClick={() => setActiveCategory(category.title)} className="text-xs font-medium text-white hover:text-white flex items-center gap-1 transition">
-                View All <ArrowRight className="w-3 h-3" />
+
+          <div
+            className="relative z-10 flex-1 min-h-0 overflow-y-auto no-scrollbar"
+            style={{
+              paddingTop:    'calc(env(safe-area-inset-top, 0px) + clamp(0.75rem, 2.5vh, 1.25rem))',
+              paddingBottom: 'clamp(1.25rem, 4vh, 2rem)',
+              paddingLeft:   'calc(env(safe-area-inset-left, 0px) + 1.25rem)',
+              paddingRight:  'calc(env(safe-area-inset-right, 0px) + 1.25rem)',
+            }}
+          >
+
+            {/* Top bar — back left, search right, mirroring the Home header
+                so the two screens feel like the same surface. */}
+            <div className="flex items-center justify-between mb-5">
+              <button
+                onClick={() => setActiveCategory(null)}
+                aria-label="Back"
+                className="w-11 h-11 flex-shrink-0 rounded-full flex items-center justify-center
+                           bg-[#1A0F33]/70 backdrop-blur-md border border-[#9457EB]/50
+                           hover:border-[#9457EB] active:scale-90 transition-all"
+              >
+                <Undo2 className="w-5 h-5 text-[#A855F7]" strokeWidth={2.25} />
+              </button>
+
+              <button
+                onClick={() => { setActiveCategory(null); setCurrentTab('search'); }}
+                aria-label="Search"
+                className="w-11 h-11 flex-shrink-0 rounded-full flex items-center justify-center
+                           bg-[#2A1B4D]/70 backdrop-blur-md border border-[#9457EB]/40
+                           hover:border-[#9457EB] active:scale-90 transition-all"
+              >
+                <SearchIcon className="w-[18px] h-[18px] text-white" strokeWidth={2.5} />
               </button>
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-6 snap-x no-scrollbar">
-              {(category.list.length > 0 ? category.list : displayList).map((game, i) => (
-                <div key={game.id + i} className="min-w-[26vw] w-[26vw] max-w-[110px] h-[26vw] max-h-[110px] flex-shrink-0 rounded-lg overflow-hidden relative snap-start cursor-pointer group border border-[#1C1635] hover:border-[#8B5CF6]/50 transition-colors" onClick={() => { setSelectedGame(game); setCurrentView('game_detail'); }}>
-                  <img src={game.coverImage} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={game.title} />
-                </div>
-              ))}
+
+            {/* Title block — genre name in Fraunces, count in Manrope */}
+            <div className="mb-5">
+              <h1
+                className="font-fraunces font-bold text-white leading-[1.05] tracking-[-0.01em]"
+                style={{ fontSize: 'clamp(1.9rem, 8.4vw, 2.6rem)' }}
+              >
+                {activeCategory}
+              </h1>
+              <p
+                className="font-manrope text-[#C2BBD4] mt-1 leading-[1.4]"
+                style={{ fontSize: 'clamp(0.8rem, 3.5vw, 0.95rem)' }}
+              >
+                {activeList.length} {activeList.length === 1 ? 'story' : 'stories'}
+              </p>
+            </div>
+
+            {/* Grid — same card anatomy as Library: art on top, dark panel below */}
+            {activeList.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3">
+                {activeList.map((game) => {
+                  const bookmarked = userMetadata.bookmarks.includes(game.id);
+                  return (
+                    <div
+                      key={game.id}
+                      onClick={() => openGame(game)}
+                      className="relative flex flex-col rounded-2xl overflow-hidden cursor-pointer group
+                                 bg-[#15111F] border border-white/10 shadow-lg shadow-black/50"
+                    >
+                      <div className="relative w-full aspect-square flex-shrink-0 overflow-hidden">
+                        <img
+                          src={game.coverImage}
+                          alt={game.title}
+                          className="absolute inset-0 w-full h-full object-cover
+                                     group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#15111F] to-transparent pointer-events-none" />
+
+                        {/* stopPropagation so bookmarking doesn't open the detail view */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleBookmark(game.id); }}
+                          aria-label={bookmarked ? 'Remove from library' : 'Add to library'}
+                          className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center
+                                     active:scale-90 transition-transform"
+                        >
+                          <Bookmark
+                            className={`w-[22px] h-[22px] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]
+                                        ${bookmarked
+                                          ? 'text-[#A855F7] fill-[#A855F7]'
+                                          : 'text-white/85 fill-white/25'}`}
+                          />
+                        </button>
+                      </div>
+
+                      <div className="px-3 pt-2.5 pb-3">
+                        <h4
+                          className="font-fraunces font-bold text-white leading-tight line-clamp-2"
+                          style={{ fontSize: 'clamp(0.9rem, 3.9vw, 1.05rem)' }}
+                        >
+                          {game.title}
+                        </h4>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center py-20 px-4">
+                <img
+                  src={ICONS.noSearch}
+                  alt=""
+                  aria-hidden="true"
+                  className="w-[min(34vw,140px)] h-[min(34vw,140px)] object-contain mb-5 opacity-70"
+                />
+                <p
+                  className="font-manrope text-[#C2BBD4] leading-[1.5]"
+                  style={{ fontSize: 'clamp(0.85rem, 3.6vw, 1rem)' }}
+                >
+                  No {activeCategory.toLowerCase()} stories yet.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ---------- HOME ----------
+    // is_featured is uniquely indexed server-side, so at most one story can
+    // claim the badge. If nobody has, the top trending story stands in.
+    const featuredGame =
+      displayList.find(g => g.isFeatured) ||
+      [...displayList].sort((a, b) => (b.trendingScore || 0) - (a.trendingScore || 0))[0] ||
+      MOCK_GAMES[0];
+
+    const continueList = displayList
+      .filter(g => (g.progress || 0) > 0 && (g.progress || 0) < 100)
+      .sort((a, b) => new Date(b.lastPlayedAt || 0) - new Date(a.lastPlayedAt || 0));
+
+    // trending_score is recomputed by pg_cron every 15 min. search_count is the
+    // tiebreaker so a cold table (all scores 0) still orders sensibly.
+    const trendingList = [...displayList]
+      .sort((a, b) =>
+        (b.trendingScore || 0) - (a.trendingScore || 0) ||
+        (b.search_count || 0) - (a.search_count || 0)
+      )
+      .slice(0, 10);
+
+    const featuredBookmarked = userMetadata.bookmarks.includes(featuredGame.id);
+
+    return (
+      <div className="flex-1 min-h-0 flex flex-col relative bg-[#1A0F33] text-white overflow-hidden font-manrope">
+
+        {/* Artwork — same treatment as Library and the auth screens */}
+        <div className="absolute inset-0 z-0">
+          <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
+        </div>
+
+        <div
+          className="relative z-10 flex-1 min-h-0 overflow-y-auto no-scrollbar"
+          style={{
+            paddingTop:    'calc(env(safe-area-inset-top, 0px) + clamp(0.75rem, 2.5vh, 1.25rem))',
+            paddingBottom: 'clamp(1.25rem, 4vh, 2rem)',
+            paddingLeft:   'calc(env(safe-area-inset-left, 0px) + 1.25rem)',
+            paddingRight:  'calc(env(safe-area-inset-right, 0px) + 1.25rem)',
+          }}
+        >
+
+          {/* ---------- TOP BAR ---------- */}
+          {/* ---------- TOP BAR ---------- */}
+          <div className="flex items-center justify-between mb-4">
+            <img src={ICONS.logo} alt="Vystoria" className="w-10 h-10 object-contain flex-shrink-0" />
+            <button
+              onClick={() => setCurrentTab('search')}
+              aria-label="Search"
+              className="w-11 h-11 flex-shrink-0 rounded-full flex items-center justify-center
+                         bg-[#2A1B4D]/70 backdrop-blur-md border border-[#9457EB]/40
+                         hover:border-[#9457EB] active:scale-90 transition-all"
+            >
+              <SearchIcon className="w-[18px] h-[18px] text-white" strokeWidth={2.5} />
+            </button>
+          </div>
+
+          {/* ---------- FEATURED HERO ---------- */}
+          {/* ---------- FEATURED HERO ---------- */}
+          {/* Same anatomy as the Library card: art on top at a fixed ratio,
+              then a solid panel that sizes to its content. The old version
+              overlaid text on the image, which meant a light or busy cover
+              (a screenshot, say) made the title unreadable. */}
+          <div
+            onClick={() => openGame(featuredGame)}
+            className="relative flex flex-col rounded-[1.5rem] overflow-hidden cursor-pointer
+                       border border-white/10 bg-[#15111F] shadow-2xl shadow-black/60 mb-7"
+          >
+            {/* Cover art */}
+            <div className="relative w-full aspect-[4/3] flex-shrink-0 overflow-hidden">
+              <img
+                src={featuredGame.coverImage}
+                alt={featuredGame.title}
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+              {/* Fade into the panel so the seam isn't a hard line */}
+              <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#15111F] to-transparent pointer-events-none" />
+
+              <span
+                className="absolute top-3.5 left-3.5 z-10 px-3 py-1 rounded-full
+                           bg-[#7C3AED] shadow-lg shadow-purple-900/50
+                           font-manrope font-bold text-white uppercase tracking-[0.12em]"
+                style={{ fontSize: 'clamp(0.55rem, 2.4vw, 0.65rem)' }}
+              >
+                Featured
+              </span>
+            </div>
+
+            {/* Info panel */}
+            <div className="px-4 pt-1 pb-4">
+              <h2
+                className="font-fraunces font-bold text-white leading-[1.1] tracking-[-0.01em] line-clamp-2"
+                style={{ fontSize: 'clamp(1.4rem, 6.2vw, 1.85rem)' }}
+              >
+                {featuredGame.title}
+              </h2>
+
+              <p
+                className="font-manrope font-semibold text-[#A855F7] mt-1.5"
+                style={{ fontSize: 'clamp(0.78rem, 3.4vw, 0.9rem)' }}
+              >
+                {featuredGame.genre}
+              </p>
+
+              <p
+                className="font-manrope text-[#C2BBD4] mt-2 leading-[1.5] line-clamp-2"
+                style={{ fontSize: 'clamp(0.72rem, 3.1vw, 0.85rem)' }}
+              >
+                {featuredGame.description || featuredGame.subtitle || 'A story where every choice writes a new ending.'}
+              </p>
+
+              <div className="flex items-stretch gap-2.5 mt-4">
+                <button
+                  onClick={(e) => { e.stopPropagation(); openGame(featuredGame); }}
+                  className="flex-1 min-h-[52px] flex items-center justify-center gap-2.5 rounded-xl
+                             bg-gradient-to-r from-[#7C3AED] to-[#9457EB]
+                             active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
+                             shadow-lg shadow-purple-900/50 transition-all active:scale-[0.98]
+                             font-manrope font-semibold text-white tracking-wide"
+                  style={{ fontSize: 'clamp(0.9rem, 3.9vw, 1.02rem)' }}
+                >
+                  <img src={ICONS.choiceBranch} alt="" aria-hidden="true" className="w-5 h-5 object-contain" />
+                  Start story
+                </button>
+
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleBookmark(featuredGame.id); }}
+                  aria-label={featuredBookmarked ? 'Remove from library' : 'Add to library'}
+                  className={`w-[52px] min-h-[52px] flex-shrink-0 rounded-xl flex items-center justify-center
+                              border transition-all active:scale-90
+                              ${featuredBookmarked
+                                ? 'bg-[#7C3AED]/30 border-[#9457EB]'
+                                : 'bg-white/[0.04] border-white/20 hover:border-[#9457EB]/70'}`}
+                >
+                  <Bookmark
+                    className={`w-[19px] h-[19px] ${featuredBookmarked ? 'text-[#A855F7] fill-[#A855F7]' : 'text-white'}`}
+                    strokeWidth={2}
+                  />
+                </button>
+              </div>
             </div>
           </div>
-        ))}
+
+          {/* ---------- CONTINUE YOUR STORY ---------- */}
+          {continueList.length > 0 && (
+            <div className="mb-7">
+              <SectionHeader title="Continue your story" onViewAll={() => setCurrentTab('library')} />
+
+              <div className="space-y-2.5">
+                {continueList.slice(0, 3).map((game) => {
+                  const progress = Math.min(100, Math.max(0, game.progress || 0));
+                  return (
+                    <div
+                      key={game.id}
+                      onClick={() => openGame(game)}
+                      className="flex items-center gap-3 p-2.5 rounded-2xl cursor-pointer group
+                                 bg-[#15111F]/85 backdrop-blur-md border border-white/10
+                                 shadow-lg shadow-black/40 active:scale-[0.99] transition-transform"
+                    >
+                      <div className="w-[22vw] max-w-[92px] aspect-square flex-shrink-0 rounded-xl overflow-hidden">
+                        <img
+                          src={game.coverImage}
+                          alt={game.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      </div>
+
+                      <div className="flex-1 min-w-0 pr-1">
+                        <h4
+                          className="font-fraunces font-bold text-white leading-tight truncate"
+                          style={{ fontSize: 'clamp(0.95rem, 4.1vw, 1.15rem)' }}
+                        >
+                          {game.title}
+                        </h4>
+
+                        <div className="w-full h-[4px] rounded-full bg-white/15 overflow-hidden mt-2.5">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-[#A855F7] to-[#7C3AED] transition-all"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+
+                        <p
+                          className="font-manrope font-medium text-[#C2BBD4] mt-1.5"
+                          style={{ fontSize: 'clamp(0.65rem, 2.9vw, 0.78rem)' }}
+                        >
+                          {progress}% completed
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ---------- TRENDING NOW ---------- */}
+          {trendingList.length > 0 && (
+            <div className="mb-7">
+              <SectionHeader title="Trending now" onViewAll={() => setCurrentTab('search')} />
+
+              <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1 snap-x">
+                {trendingList.map((game) => {
+                  const progress = Math.min(100, Math.max(0, game.progress || 0));
+                  return (
+                    <div
+                      key={game.id}
+                      onClick={() => openGame(game)}
+                      className="flex-shrink-0 w-[34vw] max-w-[140px] snap-start flex flex-col
+                                 rounded-2xl overflow-hidden cursor-pointer group
+                                 bg-[#15111F] border border-white/10 shadow-lg shadow-black/50"
+                    >
+                      <div className="relative w-full aspect-[3/4] overflow-hidden">
+                        <img
+                          src={game.coverImage}
+                          alt={game.title}
+                          className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#15111F] to-transparent pointer-events-none" />
+                      </div>
+
+                      <div className="px-2.5 pt-2 pb-2.5">
+                        <h4
+                          className="font-fraunces font-bold text-white leading-tight truncate"
+                          style={{ fontSize: 'clamp(0.85rem, 3.7vw, 1rem)' }}
+                        >
+                          {game.title}
+                        </h4>
+                        {progress > 0 && (
+                          <div className="w-full h-[3px] rounded-full bg-white/15 overflow-hidden mt-1.5">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-[#A855F7] to-[#7C3AED]"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ---------- GENRE RAILS (existing View All -> activeCategory flow) ---------- */}
+          {categories.map((category, idx) => {
+            const list = category.list.length > 0 ? category.list : displayList;
+            return (
+              <div key={idx} className="mb-7">
+                <SectionHeader title={category.title} onViewAll={() => setActiveCategory(category.title)} />
+
+                <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1 snap-x">
+                  {list.map((game, i) => (
+                    <div
+                      key={game.id + '-' + i}
+                      onClick={() => openGame(game)}
+                      className="flex-shrink-0 w-[34vw] max-w-[140px] snap-start flex flex-col
+                                 rounded-2xl overflow-hidden cursor-pointer group
+                                 bg-[#15111F] border border-white/10 shadow-lg shadow-black/50"
+                    >
+                      <div className="relative w-full aspect-[3/4] overflow-hidden">
+                        <img
+                          src={game.coverImage}
+                          alt={game.title}
+                          className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#15111F] to-transparent pointer-events-none" />
+                      </div>
+                      <div className="px-2.5 pt-2 pb-2.5">
+                        <h4
+                          className="font-fraunces font-bold text-white leading-tight truncate"
+                          style={{ fontSize: 'clamp(0.85rem, 3.7vw, 1rem)' }}
+                        >
+                          {game.title}
+                        </h4>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+
         </div>
       </div>
     );
   };
 
-  const renderSearch = () => {
+    const renderSearch = () => {
     const sourceList = cloudGames.length > 0 ? cloudGames : MOCK_GAMES;
 
     const trendingSearches = [...sourceList]
@@ -1014,169 +1585,475 @@ export default function App() {
       : trendingSearches;
 
     return (
-      <div className="flex-1 overflow-y-auto pb-6 px-4 pt-6 bg-[#0B0B14] font-spartan">
-        <div className="flex items-center gap-3 mb-8">
-          <BackButton onClick={() => setCurrentTab('home')} />
-          <div className="flex-1 bg-[#1C1635] rounded-full px-5 py-3.5 flex items-center border border-[#2D1B4E] shadow-inner">
-            <input type="text" placeholder="" className="bg-transparent text-white w-full focus:outline-none text-sm font-medium tracking-wide placeholder:text-[#8A7DAB]" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} autoFocus />
-            <SearchIcon className="text-[#8B5CF6] w-5 h-5 ml-2 flex-shrink-0" />
-          </div>
-        </div>
-        <div className="h-px w-full bg-[#9457EB] mb-6"></div>
+      // Shell: paints the artwork, never scrolls.
+      <div className="flex-1 min-h-0 flex flex-col relative bg-[#1A0F33] overflow-hidden font-spartan">
 
-        {results.length > 0 ? (
-          <>
-            <h3 className="text-2xl font-bold font-markazi text-white tracking-widest mb-4 pl-1">{searchQuery ? 'Results' : 'Top Search'}</h3>
-            <div className="space-y-3">
-              {results.map(game => (
-                <div key={game.id} className="bg-[#1C1635] rounded-2xl p-3 flex gap-4 items-center cursor-pointer border border-transparent hover:border-[#8B5CF6]/40 transition shadow-sm" onClick={() => handleSearchResultClick(game)}>
-                  <img src={game.coverImage} className="w-[19vw] h-[19vw] max-w-[80px] max-h-[80px] flex-shrink-0 rounded-xl object-cover" alt="thumb" />
-                  <div className="flex-1 min-w-0 pr-2">
-                    <h4 className="text-[#9457EB] font-bold text-base mb-1 truncate">{game.title}</h4>
-                    <p className="text-[11px] text-[#8A7DAB] line-clamp-2 leading-relaxed font-medium">An immersive visual novel about {game.title.toLowerCase()} and the epic journey that awaits...</p>
-                  </div>
-                </div>
-              ))}
+        <div className="absolute inset-0 z-0">
+          <img
+            src={authBg}
+            alt=""
+            aria-hidden="true"
+            className="w-full h-full object-cover object-center"
+          />
+          {/* Scrim so cards and body copy stay legible over the illustration.
+              Drop this div if you want the art at full strength. */}
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/75 via-[#0B0B14]/45 to-[#0B0B14]/85" />
+        </div>
+
+        {/* Scroller: sits on top of the artwork, has no background of its own. */}
+        <div className="relative z-10 flex-1 min-h-0 overflow-y-auto no-scrollbar pb-6 px-4 pt-6">
+
+          <div className="flex items-center gap-3 mb-8">
+            <BackButton onClick={() => setCurrentTab('home')} />
+            <div className="flex-1 bg-[#0B0B14]/80 backdrop-blur-md rounded-full px-5 py-3.5 flex items-center border border-[#9457EB] shadow-inner">
+              <input type="text" placeholder="" className="bg-transparent text-white w-full focus:outline-none text-sm font-medium tracking-wide placeholder:text-[#8A7DAB]" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} autoFocus />
+              <SearchIcon className="text-[#8B5CF6] w-5 h-5 ml-2 flex-shrink-0" />
             </div>
-          </>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-[50vh] text-center opacity-60">
-            <SearchIcon className="w-14 h-14 text-[#9457EB] mb-4" />
-            <h3 className="text-[clamp(26px,8.6vw,36px)] font-markazi font-bold text-white mb-2 tracking-wide">Search Not Found</h3>
-            <p className="text-[clamp(16px,4.8vw,20px)] font-markazi text-white leading-relaxed">we couldn't find anything matching<br/>your search.</p>
           </div>
-        )}
+
+          {results.length > 0 ? (
+            <>
+              <h3 className="text-2xl font-bold font-fraunces text-white tracking-widest mb-4 pl-1">{searchQuery ? 'Results' : 'Top Search'}</h3>
+              <div className="space-y-3">
+                {results.map(game => (
+                  <div key={game.id} className="bg-[#1C1635]/85 backdrop-blur-md rounded-2xl p-3 flex gap-4 items-center cursor-pointer border border-white/10 hover:border-[#8B5CF6]/40 transition shadow-lg shadow-black/40" onClick={() => handleSearchResultClick(game)}>
+                    <img src={game.coverImage} className="w-[19vw] h-[19vw] max-w-[80px] max-h-[80px] flex-shrink-0 rounded-xl object-cover" alt="thumb" />
+                    <div className="flex-1 min-w-0 pr-2">
+                      <h4 className="text-[#9457EB] font-bold text-base mb-1 truncate">{game.title}</h4>
+                      <p className="text-[11px] text-[#FFFFFF] line-clamp-2 leading-relaxed font-medium">An immersive visual novel about {game.title.toLowerCase()} and the epic journey that awaits...</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center text-center min-h-[60vh] px-4">
+                <img
+                  src={ICONS.noSearch}
+                  alt=""
+                  aria-hidden="true"
+                  className="w-[min(46vw,190px)] h-[min(46vw,190px)] object-contain mb-6"
+                />
+
+                <h2
+                  className="font-fraunces font-bold text-white leading-[1.1] tracking-[-0.01em]"
+                  style={{ fontSize: 'clamp(1.6rem, 7vw, 2.15rem)' }}
+                >
+                  No novels found
+                </h2>
+
+                <p
+                  className="font-manrope text-[#FFFFFF] mt-2.5 leading-[1.5] max-w-[300px]"
+                  style={{ fontSize: 'clamp(0.8rem, 3.5vw, 0.95rem)' }}
+                >
+                  Try checking the title or search for another novel.
+                </p>
+              </div>
+          )}
+        </div>
       </div>
     );
   };
 
-  const renderLibrary = () => {
+    const renderLibrary = () => {
     const displayList = cloudGames.length > 0 ? cloudGames : MOCK_GAMES;
-    let bookmarkedGames = displayList.filter(g => userMetadata.bookmarks.includes(g.id));
+    const bookmarkedGames = displayList.filter(g => userMetadata.bookmarks.includes(g.id));
 
-    // Search filter
-    if (searchQuery.trim()) {
-      bookmarkedGames = bookmarkedGames.filter(g => 
-        g.title.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
+    const LIBRARY_FILTERS = [
+      { id: 'all',         label: 'All' },
+      { id: 'in_progress', label: 'In Progress' },
+      { id: 'saved',       label: 'Saved' },
+      { id: 'completed',   label: 'Completed' },
+    ];
 
-    // Sorting
-    const sortedGames = [...bookmarkedGames].sort((a, b) => {
+    // progress is the single source of truth for the three non-"all" buckets:
+    // 0 = bookmarked but never opened, 1-99 = in progress, 100 = finished.
+    const matchesFilter = (g) => {
+      const p = g.progress || 0;
+      if (libraryFilter === 'in_progress') return p > 0 && p < 100;
+      if (libraryFilter === 'completed')   return p >= 100;
+      if (libraryFilter === 'saved')       return p === 0;
+      return true;
+    };
+
+    const visibleGames = [...bookmarkedGames.filter(matchesFilter)].sort((a, b) => {
       if (sortBy === 'nameAZ') return a.title.localeCompare(b.title);
       if (sortBy === 'nameZA') return b.title.localeCompare(a.title);
       return 0; // recentlyAdded — preserves original array order
     });
 
+    const isEmptyLibrary = bookmarkedGames.length === 0;
+
     return (
-      <div className="flex-1 overflow-y-auto pb-24 px-4 pt-6 bg-[#0B0B14] relative h-full flex flex-col font-spartan">
-        {/* Search Bar */}
-        <div className="relative mb-4">
-          <input 
-            type="text" 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="" 
-            className="w-full bg-[#1C1635] text-white rounded-full py-3 px-5 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-[#8B5CF6] placeholder-gray-500"
+      <div className="flex-1 min-h-0 flex flex-col relative bg-[#1A0F33] text-white overflow-hidden font-manrope">
+
+        {/* Artwork — same treatment as the auth screens */}
+        <div className="absolute inset-0 z-0">
+          <img
+            src={authBg}
+            alt=""
+            aria-hidden="true"
+            className="w-full h-full object-cover object-center"
           />
-          <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8B5CF6]" />
+          {/* Scrim so cards and body copy stay legible over the illustration.
+              Drop this div if you want the art at full strength. */}
+          
         </div>
 
-        <div className="h-[2px] w-full bg-[#9457EB]/50 mb-6"></div>
+        {/* ---------- EMPTY STATE ---------- */}
+        {isEmptyLibrary ? (
+          <div
+            className="relative z-10 flex-1 min-h-0 flex flex-col items-center justify-center text-center"
+            style={{
+              paddingLeft:  'calc(env(safe-area-inset-left, 0px) + 2rem)',
+              paddingRight: 'calc(env(safe-area-inset-right, 0px) + 2rem)',
+            }}
+          >
+            <img
+              src={empLib}
+              alt=""
+              aria-hidden="true"
+              className="w-[min(34vw,250px)] h-[min(34vw,250px)] object-contain mb-5"
+            />
 
-        {/* Sort Dropdown */}
-        <div className="flex items-center gap-2 mb-5">
-          <span className="text-white text-[clamp(18px,5.7vw,24px)] font-markazi font-bold whitespace-nowrap">Sort By:</span>
-          <div className="relative">
-            <select 
-              value={sortBy} 
-              onChange={(e) => setSortBy(e.target.value)}
-              className="appearance-none bg-[#8B5CF6] hover:bg-[#7C3AED] text-white text-base font-markazi font-bold py-1.5 pl-3 pr-8 rounded-l focus:outline-none cursor-pointer transition-colors max-w-[55vw] truncate"
+            <h2
+              className="font-fraunces font-medium text-white leading-snug mb-8"
+              style={{ fontSize: 'clamp(1.2rem, 5.4vw, 1.55rem)' }}
             >
-              <option value="recentlyAdded">Recently Added</option>
-              <option value="nameAZ">Name A-Z</option>
-              <option value="nameZA">Name Z-A</option>
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-white pointer-events-none" />
-          </div>
-        </div>
+              Your Library is Empty
+            </h2>
+            <p
+                  className="font-manrope text-[#C2BBD4] mt-1.5 leading-[1.4]"
+                  style={{ fontSize: 'clamp(0.8rem, 3.5vw, 0.95rem)' }}
+                >
+                  Bookmark stories you love to find them here
+                </p>
 
-        {sortedGames.length > 0 ? (
-          <div className="grid grid-cols-3 gap-3">
-            {sortedGames.map((game) => (
-              <div 
-                key={game.id} 
-                className="aspect-[2/3] rounded-xl overflow-hidden relative cursor-pointer group shadow-md"
-                onClick={() => { setSelectedGame(game); setCurrentView('game_detail'); }}
-              >
-                <img 
-                  src={game.coverImage} 
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-                  alt={game.title} 
-                />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center">
-            <img src={empLib} alt="Empty Library" className="w-[min(30vw,120px)] h-[min(30vw,120px)] object-contain mb-4" />
-            <h2 className="text-[clamp(29px,9.5vw,40px)] font-markazi font-bold text-white mb-6">Library is Empty</h2>
-            <button 
-              onClick={() => setCurrentTab('home')} 
-              className="bg-[#8B5CF6] hover:bg-[#7C3AED] text-[clamp(23px,7.6vw,32px)] leading-none text-white px-[clamp(1.5rem,8vw,2.5rem)] py-3 rounded-lg font-markazi font-bold shadow-lg transition-colors"
+            <br/>    
+            <button
+              onClick={() => setCurrentTab('home')}
+              className="w-full max-w-[280px] min-h-[56px] flex items-center justify-center rounded-2xl
+                         bg-gradient-to-r from-[#7C3AED] to-[#9457EB]
+                         active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
+                         shadow-lg shadow-purple-900/40 transition-all
+                         font-manrope font-semibold text-white tracking-wide"
+              style={{ fontSize: 'clamp(1rem, 4.2vw, 1.15rem)' }}
             >
               Browse Games
             </button>
+          </div>
+        ) : (
+          /* ---------- POPULATED STATE ---------- */
+          <div
+            className="relative z-10 flex-1 min-h-0 overflow-y-auto no-scrollbar"
+            style={{
+              paddingTop:    'calc(env(safe-area-inset-top, 0px) + clamp(1.25rem, 4vh, 2rem))',
+              paddingBottom: 'clamp(1.25rem, 4vh, 2rem)',
+              paddingLeft:   'calc(env(safe-area-inset-left, 0px) + 1.25rem)',
+              paddingRight:  'calc(env(safe-area-inset-right, 0px) + 1.25rem)',
+            }}
+          >
+
+            {/* Title block + sort */}
+            <div className="flex items-start justify-between gap-3 mb-5">
+              <div className="min-w-0">
+                <h1
+                  className="font-fraunces font-bold text-white leading-[1.05] tracking-[-0.01em]"
+                  style={{ fontSize: 'clamp(1.65rem, 7.2vw, 2.2rem)' }}
+                >
+                  My Library
+                </h1>
+                <p
+                  className="font-manrope text-[#C2BBD4] mt-1.5 leading-[1.4]"
+                  style={{ fontSize: 'clamp(0.8rem, 3.5vw, 0.95rem)' }}
+                >
+                  {bookmarkedGames.length} Bookmarked {bookmarkedGames.length === 1 ? 'story' : 'stories'}
+                </p>
+              </div>
+
+              <div className="relative flex-shrink-0 mt-1">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="appearance-none min-h-[38px] rounded-md
+                             bg-[#1A0F33]/70 backdrop-blur-md border border-[#9457EB]/50
+                             text-white font-manrope font-medium
+                             pl-4 pr-9 py-1.5 max-w-[42vw] truncate
+                             focus:outline-none focus:border-[#9457EB] cursor-pointer transition-colors"
+                  style={{ fontSize: 'clamp(0.72rem, 3.1vw, 0.85rem)' }}
+                >
+                  <option className="bg-[#1A0F33] text-white" value="recentlyAdded">Recently Added</option>
+                  <option className="bg-[#1A0F33] text-white" value="nameAZ">Name A-Z</option>
+                  <option className="bg-[#1A0F33] text-white" value="nameZA">Name Z-A</option>
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Filter pills — horizontally scrollable so they never wrap on a 360px screen */}
+            <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1 mb-5">
+              {LIBRARY_FILTERS.map(f => {
+                const active = libraryFilter === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => setLibraryFilter(f.id)}
+                    className={`flex-shrink-0 min-h-[36px] px-4 rounded-md font-manrope font-semibold
+                                tracking-wide transition-all whitespace-nowrap active:scale-[0.97]
+                                ${active
+                                  ? 'bg-gradient-to-r from-[#7C3AED] to-[#9457EB] text-white shadow-lg shadow-purple-900/40 border border-transparent'
+                                  : 'bg-white/5 text-[#C2BBD4] border border-white/20 hover:border-[#9457EB]/60 hover:text-white'}`}
+                    style={{ fontSize: 'clamp(0.75rem, 3.2vw, 0.875rem)' }}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Grid */}
+            {visibleGames.length > 0 ? (
+                            <div className="grid grid-cols-2 gap-3">
+                {visibleGames.map((game) => {
+                  const progress = Math.min(100, Math.max(0, game.progress || 0));
+                  const started = progress > 0;
+
+                  return (
+                    <div
+                      key={game.id}
+                      onClick={() => { setSelectedGame(game); setCurrentView('game_detail'); }}
+                      className="relative flex flex-col rounded-2xl overflow-hidden cursor-pointer group
+                                 bg-[#15111F] border border-white/10 shadow-lg shadow-black/50"
+                    >
+                      {/* Cover art — fixed square so every card in a row lines up */}
+                      <div className="relative w-full aspect-square flex-shrink-0 overflow-hidden">
+                        <img
+                          src={game.coverImage}
+                          alt={game.title}
+                          className="absolute inset-0 w-full h-full object-cover
+                                     group-hover:scale-105 transition-transform duration-300"
+                        />
+                        {/* Soft fade into the info panel so the seam isn't a hard line */}
+                        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#15111F] to-transparent pointer-events-none" />
+
+                        {/* Bookmark toggle — stopPropagation so it doesn't open the detail view */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleBookmark(game.id); }}
+                          className="absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center
+                                     active:scale-90 transition-transform"
+                          aria-label="Remove from library"
+                        >
+                          <Bookmark className="w-[22px] h-[22px] text-[#A855F7] fill-[#A855F7]
+                                               drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]" />
+                        </button>
+                      </div>
+
+                      {/* Info panel */}
+                      <div className="flex flex-col px-3 pt-2.5 pb-3">
+                        <h4
+                          className="font-fraunces font-bold text-white leading-tight line-clamp-2"
+                          style={{ fontSize: 'clamp(0.95rem, 4.1vw, 1.15rem)' }}
+                        >
+                          {game.title}
+                        </h4>
+
+                        <div
+                          className="flex items-center gap-1.5 text-[#C2BBD4] font-manrope font-medium mt-1.5"
+                          style={{ fontSize: 'clamp(0.65rem, 2.9vw, 0.78rem)' }}
+                        >
+                          {started ? (
+                            <>
+                              <BookOpen className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span className="truncate">
+                                {progress >= 100 ? 'Completed' : `${progress}% completed`}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <Bookmark className="w-3.5 h-3.5 flex-shrink-0 text-[#A855F7] fill-[#A855F7]" />
+                              <span>Saved</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Progress rail — full-bleed along the bottom edge of the card.
+                          Rendered for started games only; unstarted cards end flush
+                          at the panel, matching the "Saved" cards in the mockup. */}
+                      {started && (
+                        <div className="w-full h-[4px] bg-white/10 flex-shrink-0">
+                          <div
+                            className="h-full bg-gradient-to-r from-[#A855F7] to-[#7C3AED] transition-all"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Bookmarks exist, but this filter matched none of them */
+              <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+                <img
+                  src={empLib}
+                  alt=""
+                  aria-hidden="true"
+                  className="w-[min(22vw,90px)] h-[min(22vw,90px)] object-contain mb-4 opacity-60"
+                />
+                <p
+                  className="font-manrope text-[#C2BBD4] leading-[1.5]"
+                  style={{ fontSize: 'clamp(0.85rem, 3.6vw, 1rem)' }}
+                >
+                  Nothing in “{LIBRARY_FILTERS.find(f => f.id === libraryFilter)?.label}” yet.
+                </p>
+                <button
+                  onClick={() => setLibraryFilter('all')}
+                  className="mt-4 min-h-[40px] px-6 rounded-full border border-[#9457EB]/60
+                             bg-white/5 hover:bg-[#9457EB]/20 text-white font-manrope font-semibold transition-colors"
+                  style={{ fontSize: 'clamp(0.8rem, 3.4vw, 0.9rem)' }}
+                >
+                  Show all
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
     );
   };
 
-  const renderAchievements = () => {
-    const stats = userMetadata.stats;
-    const achievements = [
-      { id: 1, title: 'Booter', desc: 'Play visual novels for a total of 30 minutes', progress: Math.min(100, (stats.playTimeMins / 30) * 100), unlocked: stats.playTimeMins >= 30, icon: '🚀' },
-      { id: 2, title: 'Drop In', desc: 'Start your first visual novel.', progress: stats.gamesStarted.length > 0 ? 100 : 0, unlocked: stats.gamesStarted.length > 0, icon: '🏳️' },
-      { id: 3, title: 'Locked In', desc: 'Read visual novels on 10 different days', progress: 10, unlocked: false, icon: '📅' },
-      { id: 4, title: 'Loadrunner', desc: 'Start 3 different visual novels', progress: Math.min(100, (stats.gamesStarted.length / 3) * 100), unlocked: stats.gamesStarted.length >= 3, icon: '📚' },
-      { id: 5, title: 'Pathfinder', desc: 'Start visual novels from 5 different genres', progress: 0, unlocked: false, icon: '🧭' },
-      { id: 6, title: 'Decision Maker', desc: 'Make 25 meaningful choices across all games', progress: Math.min(100, (stats.choicesMade / 25) * 100), unlocked: stats.choicesMade >= 25, icon: '🔀' },
+    const renderAchievements = () => {
+    // Placeholder counts. Wire these to userMetadata.stats when the
+    // achievement logic lands — the UI below derives everything else
+    // (totals, percentages, bar widths) from this array, so only these
+    // two numbers per row need to change.
+    const categories = [
+      { id: 'story',       title: 'Story Journey',        icon: achStoryJourney,   unlocked: 4, total: 8 },
+      { id: 'endings',     title: 'Endings & Replay',     icon: achEndingsReplay,  unlocked: 1, total: 6 },
+      { id: 'exploration', title: 'Exploration',          icon: achExploration,    unlocked: 2, total: 6 },
+      { id: 'completion',  title: 'Completionist',        icon: achCompletionist,  unlocked: 1, total: 5 },
+      { id: 'community',   title: 'Community & Feedback', icon: achCommunity,      unlocked: 0, total: 5 },
     ];
 
+    const totalUnlocked = categories.reduce((sum, c) => sum + c.unlocked, 0);
+    const totalBadges = categories.reduce((sum, c) => sum + c.total, 0);
+    const overallPercent = totalBadges > 0 ? Math.round((totalUnlocked / totalBadges) * 100) : 0;
+
     return (
-      <div className="flex-1 overflow-y-auto pb-24 px-4 pt-[max(2.5rem,calc(env(safe-area-inset-top)+1rem))] bg-[#0B0B14] font-spartan">
-        <h2 className="text-[clamp(22px,7.1vw,30px)] font-bold text-white text-left mb-8 tracking-wide px-2">Achievements</h2>
-        
-        <div className="grid grid-cols-2 gap-3 mb-8 px-1">
-          {achievements.slice(0, 4).map(ach => (
-            <div key={ach.id} className="bg-[#1C1635] border border-[#2D1B4E] rounded-2xl p-4 flex flex-col items-start relative overflow-hidden shadow-sm">
-               {ach.unlocked && <div className="absolute top-3 right-3 bg-[#10B981] rounded-full w-5 h-5 flex items-center justify-center z-10"><Check className="w-3 h-3 text-white" strokeWidth={3} /></div>}
-               <div className="mb-3 text-2xl">
-                  {ach.icon}
-               </div>
-               <span className="text-[13px] font-bold text-white mb-2 z-10 leading-tight pr-4">{ach.title}</span>
-               <span className={`text-[9px] px-3 py-1 rounded-full font-bold z-10 uppercase tracking-widest ${ach.unlocked ? 'bg-[#10B981]/20 text-[#34D399]' : 'bg-black/40 text-gray-500'}`}>{ach.unlocked ? 'Unlocked' : 'Locked'}</span>
-            </div>
-          ))}
+      <div className="flex-1 min-h-0 flex flex-col relative bg-[#1A0F33] text-white overflow-hidden font-manrope">
+
+        {/* Artwork — same treatment as the other tabs */}
+        <div className="absolute inset-0 z-0">
+          <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/80 via-[#0B0B14]/60 to-[#0B0B14]/85" />
         </div>
 
-        <h3 className="text-xs font-bold text-[#A78BFA] tracking-widest uppercase mb-4 px-2">All Badges</h3>
-        <div className="space-y-3 px-1">
-          {achievements.map(ach => (
-            <div key={ach.id} className="bg-[#1C1635] border border-[#2D1B4E] rounded-2xl p-4 flex items-center gap-4 transition shadow-sm">
-              <div className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 text-2xl border ${ach.unlocked ? 'bg-[#2D1B4E] border-[#4C1D95]' : 'bg-[#0B0B14] border-[#1C1635] grayscale opacity-50'}`}>
-                 {ach.icon}
-              </div>
+        <div
+          className="relative z-10 flex-1 min-h-0 overflow-y-auto no-scrollbar"
+          style={{
+            paddingTop:    'calc(env(safe-area-inset-top, 0px) + clamp(1rem, 3.5vh, 1.75rem))',
+            paddingBottom: 'clamp(1.25rem, 4vh, 2rem)',
+            paddingLeft:   'calc(env(safe-area-inset-left, 0px) + 1.25rem)',
+            paddingRight:  'calc(env(safe-area-inset-right, 0px) + 1.25rem)',
+          }}
+        >
+
+          {/* ---------- SUMMARY CARD ---------- */}
+          <div className="rounded-2xl border border-[#9457EB]/40 bg-[#15111F]/85 backdrop-blur-md
+                          shadow-lg shadow-black/50 p-4 mb-6">
+            <div className="flex items-center gap-4">
+              <img
+                src={trophyHero}
+                alt=""
+                aria-hidden="true"
+                className="w-[28vw] max-w-[118px] flex-shrink-0 object-contain
+                           drop-shadow-[0_0_18px_rgba(168,85,247,0.45)]"
+              />
+
               <div className="flex-1 min-w-0">
-                <h4 className="text-white font-bold text-[15px] truncate">{ach.title}</h4>
-                <p className="text-[11px] text-[#8A7DAB] mt-1 mb-2 font-medium leading-snug">{ach.desc}</p>
-                <div className="w-full bg-[#0B0B14] h-1.5 rounded-full overflow-hidden border border-[#2D1B4E]">
-                  <div className={`h-full rounded-full transition-all ${ach.unlocked ? 'bg-[#10B981]' : 'bg-[#4C1D95]'}`} style={{width: `${ach.progress}%`}}></div>
+                <h2
+                  className="font-manrope font-semibold text-white leading-[1.2]"
+                  style={{ fontSize: 'clamp(1.05rem, 4.6vw, 1.35rem)' }}
+                >
+                  {totalUnlocked} of {totalBadges} unlocked
+                </h2>
+
+                <p
+                  className="font-manrope text-[#C2BBD4] mt-1"
+                  style={{ fontSize: 'clamp(0.72rem, 3.1vw, 0.85rem)' }}
+                >
+                  {overallPercent}% complete
+                </p>
+
+                <div className="w-full h-[7px] rounded-full bg-white/12 overflow-hidden mt-3">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-[#A855F7] to-[#7C3AED] transition-all"
+                    style={{ width: `${overallPercent}%` }}
+                  />
                 </div>
               </div>
             </div>
-          ))}
+          </div>
+
+          {/* ---------- CATEGORIES ---------- */}
+          <h3
+            className="font-manrope font-medium text-white tracking-wide mb-3"
+            style={{ fontSize: 'clamp(0.9rem, 3.9vw, 1.05rem)' }}
+          >
+            Categories
+          </h3>
+
+          <div className="space-y-3">
+            {categories.map((cat) => {
+              const percent = cat.total > 0 ? Math.round((cat.unlocked / cat.total) * 100) : 0;
+              return (
+                <div
+                  key={cat.id}
+                  className="flex items-center gap-3.5 p-3 rounded-2xl cursor-pointer
+                             bg-[#15111F]/85 backdrop-blur-md border border-[#9457EB]/25
+                             shadow-lg shadow-black/40 hover:border-[#9457EB]/60
+                             active:scale-[0.99] transition-all"
+                >
+                  <div className="w-[15vw] max-w-[60px] aspect-square flex-shrink-0 rounded-xl
+                                  flex items-center justify-center
+                                  bg-[#1A0F33] border border-[#9457EB]/45">
+                    <img
+                      src={cat.icon}
+                      alt=""
+                      aria-hidden="true"
+                      className="w-[68%] h-[68%] object-contain"
+                    />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <h4
+                      className="font-manrope font-medium text-white leading-tight truncate"
+                      style={{ fontSize: 'clamp(0.92rem, 4vw, 1.05rem)' }}
+                    >
+                      {cat.title}
+                    </h4>
+
+                    <p
+                      className="font-manrope text-[#C2BBD4] mt-0.5"
+                      style={{ fontSize: 'clamp(0.68rem, 2.9vw, 0.78rem)' }}
+                    >
+                      {cat.unlocked} of {cat.total} unlocked
+                    </p>
+
+                    <div className="w-full h-[6px] rounded-full bg-white/12 overflow-hidden mt-2">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-[#A855F7] to-[#7C3AED] transition-all"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <ChevronRight className="w-6 h-6 flex-shrink-0 text-[#A855F7]" strokeWidth={2} />
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
@@ -1192,95 +2069,275 @@ export default function App() {
       if (newUrl) updateMetadata({ avatar_url: newUrl });
     };
 
+    // One shape for all three rows so the icon column, label baseline, and
+    // chevron stay aligned regardless of label length.
+    const ActionRow = ({ icon, label, onClick, danger = false, last = false }) => (
+      <button
+        onClick={onClick}
+        className={`w-full flex items-center gap-4 px-4 py-4 text-left
+                    hover:bg-white/[0.04] active:bg-white/[0.07] transition-colors
+                    ${last ? '' : 'border-b border-white/10'}`}
+      >
+        <span className="w-6 flex-shrink-0 flex items-center justify-center">{icon}</span>
+        <span
+          className={`flex-1 min-w-0 font-manrope font-medium truncate
+                      ${danger ? 'text-[#F87171]' : 'text-white'}`}
+          style={{ fontSize: 'clamp(0.9rem, 3.9vw, 1.02rem)' }}
+        >
+          {label}
+        </span>
+        <ChevronRight className="w-5 h-5 flex-shrink-0 text-[#A855F7]" strokeWidth={2.25} />
+      </button>
+    );
+
     return (
-      <div className="flex-1 overflow-y-auto pb-24 px-6 pt-[max(4rem,calc(env(safe-area-inset-top)+2rem))] bg-[#0B0B14] flex flex-col items-center font-spartan">
-        {/* Avatar */}
-        <div className="relative w-[min(28vw,7rem)] h-[min(28vw,7rem)] flex-shrink-0 mb-5">
-          <div className="w-full h-full rounded-full overflow-hidden border-[3px] border-[#8B5CF6] shadow-[0_0_25px_rgba(139,92,246,0.6)] p-[3px]">
-            <img src={userMetadata.avatar_url} className="w-full h-full rounded-full object-cover" alt="avatar" />
-          </div>
-          <div onClick={handlePicEdit} className="absolute bottom-0 right-0 bg-[#1C1635] p-1.5 rounded-full cursor-pointer hover:bg-[#2D1B4E] transition border border-[#4C1D95]">
-            <Camera className="w-4 h-4 text-white" />
-          </div>
+      <div className="flex-1 min-h-0 flex flex-col relative bg-[#1A0F33] text-white overflow-hidden font-manrope">
+
+        {/* Artwork — same treatment as Home, Library and Search */}
+        <div className="absolute inset-0 z-0">
+          <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/75 via-[#0B0B14]/50 to-[#0B0B14]/85" />
         </div>
 
-        {/* Name */}
-        <div className="flex items-center gap-2 mb-1 group cursor-pointer" onClick={handleNameEdit}>
-          <h3 className="text-[clamp(18px,5.7vw,24px)] font-markazi font-bold text-white tracking-wide max-w-[70vw] truncate">{userMetadata.full_name}</h3>
-          <Edit3 className="w-5 h-5 text-white group-hover:text-white transition" />
-        </div>
+        <div
+          className="relative z-10 flex-1 min-h-0 overflow-y-auto no-scrollbar"
+          style={{
+            paddingTop:    'calc(env(safe-area-inset-top, 0px) + clamp(1rem, 3.5vh, 1.75rem))',
+            paddingBottom: 'clamp(1.25rem, 4vh, 2rem)',
+            paddingLeft:   'calc(env(safe-area-inset-left, 0px) + 1.25rem)',
+            paddingRight:  'calc(env(safe-area-inset-right, 0px) + 1.25rem)',
+          }}
+        >
 
-        {/* Email */}
-        <button onClick={handleCopyEmail} className="text-[clamp(16px,5.7vw,24px)] text-white font-markazi flex items-center justify-center gap-2 mb-14 max-w-full break-all text-center hover:text-white transition">
-          {user?.email || 'player@darkcity.com'}
-          {emailCopied ? <Check className="w-4 h-4 text-green-400 font-markazi" /> : <Copy className="w-4 h-4 text-white font-markazi" />}
-        </button>
+          {/* ---------- IDENTITY CARD ---------- */}
+          <div className="rounded-2xl border border-[#9457EB]/35 bg-[#15111F]/85 backdrop-blur-md
+                          shadow-lg shadow-black/40 p-4 mb-5">
+            <div className="flex items-center gap-4">
 
-        {/* Buttons */}
-        <div className="w-full space-y-4">
-          <button onClick={() => setCurrentView('support')} className="w-full bg-[#9457EB80] text-[30px] text-white p-5 font-markazi flex items-center gap-4 transition shadow-md">
-            <div className="">
-              <img src={supp} alt="Support" className="w-5 h-5 object-contain text-[30px]" />
-            </div>
-            <span className="font-bold text-[clamp(19px,6vw,25px)] leading-none">Support</span>
-          </button>
-          <button onClick={() => setShowLogoutModal(true)} className="w-full bg-[#9457EB80] text-white p-5 font-markazi flex items-center gap-4 transition shadow-md">
-            <div className="">
-              <LogOut className="text-white w-5 h-5" />
-            </div>
-            <span className="font-bold text-[clamp(19px,6vw,25px)] leading-none">Logout</span>
-          </button>
-          <button onClick={() => setShowDeleteModal(true)} className="w-full bg-[#9457EB80] text-white p-5 font-markazi flex items-center gap-4 transition shadow-md">
-            <div className="">
-              <Trash2 className="text-white w-5 h-5" />
-            </div>
-            <span className="font-bold text-[clamp(19px,6vw,25px)] leading-none">Delete Account</span>
-          </button>
-        </div>
-
-        {/* Modals */}
-        {(showLogoutModal || showDeleteModal) && (
-          <div className="fixed inset-0 bg-[#0B0B14]/90 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-            <div className="bg-[#13132B] w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl border border-[#2D1B4E]">
-              <div className="w-16 h-16 rounded-full bg-[#2D1B4E] flex items-center justify-center mx-auto mb-6 shadow-inner">
-                {showLogoutModal ? <LogOut className="text-white w-8 h-8" /> : <Trash2 className="text-white w-8 h-8" />}
+              {/* Avatar + camera affordance */}
+              <div className="relative w-[19vw] max-w-[76px] aspect-square flex-shrink-0">
+                <img
+                  src={userMetadata.avatar_url}
+                  alt="avatar"
+                  className="w-full h-full rounded-full object-cover border-2 border-[#9457EB]/60"
+                />
+                <button
+                  onClick={handlePicEdit}
+                  aria-label="Change profile photo"
+                  className="absolute bottom-0 right-0 w-7 h-7 rounded-full flex items-center justify-center
+                             bg-[#2A1B4D] border border-[#9457EB] active:scale-90 transition-transform"
+                >
+                  <Camera className="w-3.5 h-3.5 text-[#A855F7]" strokeWidth={2.25} />
+                </button>
               </div>
-              <h3 className="text-white font-markazi font-bold mb-4 text-lg leading-snug">
-                {showLogoutModal ? 'Are you sure you want to Logout?' : 'Are you sure you want to permanently delete your account? All your data will be lost forever.'}
-              </h3>
-              <div className="flex gap-4 mt-8">
-                <button onClick={() => {setShowLogoutModal(false); setShowDeleteModal(false)}} className="flex-1 bg-[#2D1B4E] hover:bg-[#3B0764] text-white py-4 rounded-xl font-markazi text-xl font-bold transition">Cancel</button>
-                <button onClick={showLogoutModal ? handleLogout : handleDeleteAccount} className="flex-1 py-4 rounded-xl font-markazi font-bold text-white shadow-lg transition bg-[#8B5CF6] text-xl hover:bg-[#7C3AED]">
-                  {showLogoutModal ? 'Logout' : 'Delete'}
+
+              <div className="flex-1 min-w-0">
+                {/* Name — Fraunces, the only display-font element on this screen */}
+                <div className="flex items-center gap-2 min-w-0">
+                  <h2
+                    className="font-fraunces font-bold text-white leading-[1.1] tracking-[-0.01em] truncate"
+                    style={{ fontSize: 'clamp(1.35rem, 6vw, 1.75rem)' }}
+                  >
+                    {userMetadata.full_name || 'User'}
+                  </h2>
+                  <button
+                    onClick={handleNameEdit}
+                    aria-label="Edit name"
+                    className="flex-shrink-0 p-1 -m-1 active:scale-90 transition-transform"
+                  >
+                    <Edit3 className="w-[18px] h-[18px] text-[#A855F7]" strokeWidth={2.25} />
+                  </button>
+                </div>
+
+                {/* Email — copy on tap, checkmark confirms */}
+                <button
+                  onClick={handleCopyEmail}
+                  className="flex items-center gap-2 mt-1.5 min-w-0 w-full text-left group"
+                >
+                  <span
+                    className="font-manrope text-[#C2BBD4] truncate group-hover:text-white transition-colors"
+                    style={{ fontSize: 'clamp(0.78rem, 3.4vw, 0.9rem)' }}
+                  >
+                    {user?.email || 'player@darkcity.com'}
+                  </span>
+                  {emailCopied
+                    ? <Check className="w-4 h-4 flex-shrink-0 text-green-400" strokeWidth={3} />
+                    : <Copy className="w-4 h-4 flex-shrink-0 text-[#A855F7]" strokeWidth={2} />}
                 </button>
               </div>
             </div>
           </div>
-        )}
+
+          <br/>
+
+          {/* ---------- ACTIONS ---------- */}
+          {/* ---------- ACTIONS ---------- */}
+          <div className="rounded-2xl border border-[#9457EB]/35 bg-[#15111F]/85 backdrop-blur-md
+                          shadow-lg shadow-black/40 overflow-hidden">
+            <ActionRow
+              icon={<img src={ICONS.help} alt="" aria-hidden="true" className="w-[22px] h-[22px] object-contain" />}
+              label="Help & Support"
+              onClick={() => setCurrentView('support')}
+            />
+            <ActionRow
+              icon={<img src={ICONS.logout} alt="" aria-hidden="true" className="w-[22px] h-[22px] object-contain" />}
+              label="Log Out"
+              onClick={() => setShowLogoutModal(true)}
+            />
+            <ActionRow
+              icon={<img src={ICONS.deleteAccount} alt="" aria-hidden="true" className="w-[22px] h-[22px] object-contain" />}
+              label="Delete Account"
+              onClick={() => setShowDeleteModal(true)}
+              danger
+              last
+            />
+          </div>
+
+          {/* ---------- MODALS ---------- */}
+          {/* ---------- MODALS ---------- */}
+          {(showLogoutModal || showDeleteModal) && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center px-8">
+
+              {/* The overlay paints authBg itself rather than blurring the
+                  profile screen underneath, so the modal reads as its own
+                  surface — matching the screenshots. */}
+              <div className="absolute inset-0">
+                <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
+                <div className="absolute inset-0 bg-[#0B0B14]/80" />
+              </div>
+
+              <div className="relative w-full max-w-[300px] rounded-2xl p-5 text-center
+                              bg-gradient-to-b from-[#2A1B4D] to-[#1A0F33]
+                              border border-[#9457EB]/45 shadow-2xl shadow-black/70">
+
+                <div className="w-11 h-11 rounded-full flex items-center justify-center mx-auto mb-4
+                                bg-[#3B2566] border border-[#9457EB]/50">
+                  <img
+                    src={showLogoutModal ? ICONS.logout : ICONS.deleteAccount}
+                    alt=""
+                    aria-hidden="true"
+                    className="w-5 h-5 object-contain"
+                  />
+                </div>
+
+                <p
+                  className="font-manrope text-white leading-[1.5] mb-5"
+                  style={{ fontSize: 'clamp(0.8rem, 3.4vw, 0.9rem)' }}
+                >
+                  {showLogoutModal
+                    ? 'Are you sure you want to Logout?'
+                    : 'Are you sure you want to permanently delete your account? All your data will be lost forever.'}
+                </p>
+
+                <div className="flex gap-2.5">
+                  <button
+                    onClick={() => { setShowLogoutModal(false); setShowDeleteModal(false); }}
+                    className="flex-1 min-h-[42px] rounded-lg bg-[#3B2566] hover:bg-[#4A2F7A]
+                               border border-[#9457EB]/30 text-white font-manrope font-semibold
+                               active:scale-[0.97] transition-all"
+                    style={{ fontSize: 'clamp(0.8rem, 3.4vw, 0.9rem)' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={showLogoutModal ? handleLogout : handleDeleteAccount}
+                    className="flex-1 min-h-[42px] rounded-lg font-manrope font-semibold text-white
+                               bg-gradient-to-r from-[#7C3AED] to-[#9457EB]
+                               hover:from-[#8B5CF6] hover:to-[#A472F0]
+                               shadow-lg shadow-purple-900/40 active:scale-[0.97] transition-all"
+                    style={{ fontSize: 'clamp(0.8rem, 3.4vw, 0.9rem)' }}
+                  >
+                    {showLogoutModal ? 'Logout' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
 
   const renderCustomerSupport = () => (
-    <div className="flex flex-col h-full bg-[#0B0B14] text-white overflow-y-auto pb-24 relative px-6 pt-[max(3rem,calc(env(safe-area-inset-top)+1rem))] text-center font-spartan">
-      <BackButton onClick={() => setCurrentView('main')} className="mb-6 self-start" />
+    <div className="flex-1 min-h-0 flex flex-col relative bg-[#1A0F33] text-white overflow-hidden font-manrope">
 
-      <div className="h-px w-full bg-[#FFFFFF]/50 mb-6"></div>
-      
-      <h1 className="text-[clamp(26px,8.6vw,36px)] font-markazi font-bold tracking-wide">Customer Support</h1>
-      
-      <div className="w-full flex flex-col items-center justify-center mt-8">
-        <div className="w-[min(32vw,8rem)] h-[min(32vw,8rem)] flex items-center justify-center mb-4">
-          <Mail className="w-full h-full text-white" strokeWidth={1.5} />
-        </div>
-        <p className="text-[clamp(16px,4.8vw,20px)] font-markazi text-white mb-6">Need Help ? Contact us at</p>
-        <a 
-          href="mailto:darkcity.atelier@gmail.com" 
-          className="bg-[#5B21B6] hover:bg-[#6D28D9] text-white px-4 py-3.5 rounded-xl font-markazi font-bold text-[clamp(14px,4.3vw,18px)] transition w-full flex items-center justify-center gap-2 break-all text-center"
+      <div className="absolute inset-0 z-0">
+        <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/70 via-[#0B0B14]/45 to-[#0B0B14]/80" />
+      </div>
+
+      <div
+        className="relative z-10 flex-1 min-h-0 overflow-y-auto no-scrollbar"
+        style={{
+          paddingTop:    'calc(env(safe-area-inset-top, 0px) + clamp(0.75rem, 2.5vh, 1.25rem))',
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + clamp(1.25rem, 4vh, 2rem))',
+          paddingLeft:   'calc(env(safe-area-inset-left, 0px) + 1.5rem)',
+          paddingRight:  'calc(env(safe-area-inset-right, 0px) + 1.5rem)',
+        }}
+      >
+        <button
+          onClick={() => setCurrentView('main')}
+          aria-label="Back"
+          className="w-11 h-11 flex-shrink-0 rounded-full flex items-center justify-center
+                     bg-[#1A0F33]/70 backdrop-blur-md border border-[#9457EB]/50
+                     hover:border-[#9457EB] active:scale-90 transition-all"
         >
-          darkcity.atelier@gmail.com
-          <Copy className="w-4 h-4" />
-        </a>
+          <Undo2 className="w-5 h-5 text-[#A855F7]" strokeWidth={2.25} />
+        </button>
+
+        {/* Content sits in the upper third, not centred in the viewport */}
+        <div className="flex flex-col items-center text-center mt-[clamp(4rem,14vh,7rem)]">
+
+          <h1
+            className="font-fraunces font-bold text-white leading-[1.15] tracking-[-0.01em]"
+            style={{ fontSize: 'clamp(1.35rem, 6vw, 1.75rem)' }}
+          >
+            Customer Support
+          </h1>
+
+          <img
+            src={mailIcon1}
+            alt=""
+            aria-hidden="true"
+            className="w-[min(16vw,60px)] h-[min(16vw,60px)] object-contain my-5"
+          />
+
+          <p
+            className="font-manrope text-white leading-[1.5] mb-5"
+            style={{ fontSize: 'clamp(0.82rem, 3.5vw, 0.95rem)' }}
+          >
+            Need Help ? Contact us at
+          </p>
+
+          {/* Tap to copy. mailto: is deliberately not used — on a Capacitor
+              WebView with no mail client configured it silently does nothing,
+              whereas the clipboard always works. */}
+          <button
+            onClick={handleCopySupportEmail}
+            className="w-full max-w-[300px] min-h-[54px] px-5 rounded-xl flex items-center justify-center gap-3
+                       bg-white/[0.07] backdrop-blur-md border border-white/15
+                       hover:bg-white/[0.11] hover:border-[#9457EB]/60 active:scale-[0.98] transition-all"
+          >
+            <span
+              className="font-manrope font-medium text-white break-all"
+              style={{ fontSize: 'clamp(0.82rem, 3.5vw, 0.95rem)' }}
+            >
+              {SUPPORT_EMAIL}
+            </span>
+            {supportCopied
+              ? <Check className="w-4 h-4 flex-shrink-0 text-green-400" strokeWidth={3} />
+              : <Copy className="w-4 h-4 flex-shrink-0 text-white/80" strokeWidth={2} />}
+          </button>
+
+          {supportCopied && (
+            <p
+              className="font-manrope text-green-400 mt-3"
+              style={{ fontSize: 'clamp(0.72rem, 3.1vw, 0.82rem)' }}
+            >
+              Copied to clipboard
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1671,22 +2728,15 @@ export default function App() {
         Inject League Spartan globally. 
         Note: You can move this to your index.css or index.html later. 
       */}
+      {/*
+        Global font faces. You can move this to index.css or index.html later —
+        see note below; the <link> approach in index.html loads faster.
+      */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700;800&display=swap');
-        .font-spartan { font-family: 'League Spartan', sans-serif !important; }
-
-        /* Capacitor runs full-screen behind the notch and the gesture bar.
-           index.html MUST carry viewport-fit=cover or every env() below
-           resolves to 0px. See the notes that shipped with this file. */
-        html, body, #root { height: 100%; }
-        body { overscroll-behavior-y: none; }
-
-        /* The 'xs' breakpoint used by the choice grid in the engine. Declared
-           here so this file stays drop-in; move it into tailwind.config.js
-           (theme.extend.screens.xs = '400px') when convenient. */
-        @media (min-width: 400px) {
-          [class~="xs:grid-cols-2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        }
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=League+Spartan:wght@300;400;500;600;700;800&display=swap');
+        .font-spartan  { font-family: 'League Spartan', sans-serif !important; }
+        .font-fraunces { font-family: 'Fraunces', Georgia, serif !important; }
+        .font-manrope  { font-family: 'Manrope', system-ui, sans-serif !important; }
       `}</style>
       
       <div className="min-h-[100dvh] bg-black flex items-center justify-center font-spartan selection:bg-purple-500/30">
@@ -1715,12 +2765,20 @@ export default function App() {
           )}
 
           {currentView === 'main' && currentTab !== 'search' && (
-            <div className="w-full bg-[#0B0B14] border-t border-[#1C1635] px-[max(0.75rem,env(safe-area-inset-left))] py-3 pb-[max(1.5rem,calc(env(safe-area-inset-bottom)+0.5rem))] sm:pb-3 z-30 flex-shrink-0">
+            <div
+              className="w-full flex-shrink-0 z-30 bg-[#140F26] border-t border-white/10"
+              style={{
+                paddingLeft:   'calc(env(safe-area-inset-left, 0px) + 0.5rem)',
+                paddingRight:  'calc(env(safe-area-inset-right, 0px) + 0.5rem)',
+                paddingTop:    '0.5rem',
+                paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.5rem)',
+              }}
+            >
               <div className="flex justify-between items-center">
-                <NavBtn icon={<BookOpen />} iconSrc={ICONS.navLibrary} label="Library" active={currentTab === 'library'} onClick={() => navigateTo('main', 'library')} />
-                <NavBtn icon={<Home />} iconSrc={ICONS.navHome} label="Home" active={currentTab === 'home'} onClick={() => navigateTo('main', 'home')} />
-                <NavBtn icon={<Trophy />} iconSrc={ICONS.navAchievements} label="Achievements" active={currentTab === 'achievements'} onClick={() => navigateTo('main', 'achievements')} />
-                <NavBtn icon={<User />} iconSrc={ICONS.navProfile} label="Profile" active={currentTab === 'profile'} onClick={() => navigateTo('main', 'profile')} />
+                <NavBtn icon={<Home />}            label="Home"         active={currentTab === 'home'}         onClick={() => navigateTo('main', 'home')} />
+                <NavBtn icon={<Trophy />}          label="Achievements" active={currentTab === 'achievements'} onClick={() => navigateTo('main', 'achievements')} />
+                <NavBtn iconSrc={ICONS.navLibrary} label="Library"      active={currentTab === 'library'}      onClick={() => navigateTo('main', 'library')} />
+                <NavBtn icon={<User />}            label="Profile"      active={currentTab === 'profile'}      onClick={() => navigateTo('main', 'profile')} />
               </div>
             </div>
           )}
@@ -1749,56 +2807,56 @@ const BackButton = ({ onClick, className = '' }) => (
   </div>
 );
 
-// NavBtn preferentially uses the custom iconSrc. If not mapped, falls back to Lucide.
-const NavBtn = ({ icon, iconSrc, label, active, onClick }) => (
-  <div 
-    onClick={onClick} 
-    className={`
-      flex flex-col items-center gap-1.5 cursor-pointer group px-2 py-2 rounded-xl min-w-0 flex-1
-      transition-all duration-200 select-none
-      ${active ? 'scale-105' : 'hover:bg-[#8B5CF6]/10 active:scale-90'}
-    `}
+// Lucide-only. The PNG pairs were shipping their own background plates,
+// which is why the bar looked like four tiles instead of four icons — no
+// amount of CSS can remove a background that's part of the raster.
+// iconSrc is painted as a CSS mask over a solid background colour, so the
+// SVG's own fill is irrelevant and the icon always matches the label.
+// Handles both icon sources: iconSrc renders the file as a CSS mask (colour
+// comes from CSS, the file's own fill is discarded), icon renders a lucide
+// component. Library uses the mask; the rest use lucide.
+const NavBtn = ({ iconSrc, icon, label, active, onClick }) => (
+  <div
+    onClick={onClick}
+    className={`flex flex-col items-center gap-1 cursor-pointer group px-2 py-1.5 rounded-xl
+                min-w-0 flex-1 transition-all duration-200 select-none
+                ${active ? '' : 'active:scale-90'}`}
   >
-    <div className={`
-      transition-all duration-300
-      ${active ? 'scale-110' : 'group-hover:scale-110'}
-    `}>
+    <div className={`transition-transform duration-300 ${active ? 'scale-110' : 'group-hover:scale-110'}`}>
       {iconSrc ? (
-        <img
-          src={iconSrc}
-          alt={label}
-          className={`
-            w-6 h-6 object-contain transition-all duration-300
-            ${active 
-              ? 'opacity-100' 
-              : 'opacity-40 group-hover:opacity-100'}
-          `}
-          style={active ? { 
-            filter: 'drop-shadow(0 0 10px rgba(139,92,246,1)) saturate(1.3)' 
-          } : { 
-            filter: 'none' 
+        <span
+          aria-hidden="true"
+          className={`block w-6 h-6 transition-colors duration-300
+                      ${active
+                        ? 'bg-[#A855F7] drop-shadow-[0_0_8px_rgba(168,85,247,0.55)]'
+                        : 'bg-[#6B6484] group-hover:bg-[#A855F7]'}`}
+          style={{
+            WebkitMaskImage: `url(${iconSrc})`,
+            maskImage: `url(${iconSrc})`,
+            WebkitMaskRepeat: 'no-repeat',
+            maskRepeat: 'no-repeat',
+            WebkitMaskPosition: 'center',
+            maskPosition: 'center',
+            WebkitMaskSize: 'contain',
+            maskSize: 'contain',
           }}
         />
       ) : (
         React.cloneElement(icon, {
-          size: 24,
-          strokeWidth: active ? 2.5 : 1.5,
-          className: `
-            transition-all duration-300
-            ${active 
-              ? 'text-[#8B5CF6] drop-shadow-[0_0_10px_rgba(139,92,246,1)]' 
-              : 'text-[#4D3A7A] group-hover:text-[#8B5CF6] group-hover:drop-shadow-[0_0_6px_rgba(139,92,246,0.6)]'}
-          `
+          size: 23,
+          strokeWidth: active ? 2.5 : 1.75,
+          className: active
+            ? 'text-[#A855F7] drop-shadow-[0_0_8px_rgba(168,85,247,0.55)]'
+            : 'text-[#6B6484] group-hover:text-[#A855F7]',
         })
       )}
     </div>
-    
-    <span className={`
-      text-[clamp(8px,2.4vw,10px)] font-bold tracking-wide whitespace-nowrap transition-all duration-300
-      ${active 
-        ? 'text-white drop-shadow-[0_0_6px_rgba(139,92,246,0.8)]' 
-        : 'text-[#4D3A7A] group-hover:text-[#8B5CF6]'}
-    `}>
+
+    <span
+      className={`font-manrope tracking-wide whitespace-nowrap transition-colors duration-300
+                  ${active ? 'text-[#A855F7] font-semibold' : 'text-[#6B6484] font-medium'}`}
+      style={{ fontSize: 'clamp(9px, 2.6vw, 11px)' }}
+    >
       {label}
     </span>
   </div>

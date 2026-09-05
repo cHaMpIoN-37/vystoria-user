@@ -1,5 +1,5 @@
 // Vystoria User App
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
 import { ScreenOrientation } from '@capacitor/screen-orientation';
@@ -8,9 +8,8 @@ import {
   LogOut, Trash2, Mail, CheckCircle2, Settings, Loader2,
   Menu, ArrowLeft, Save, Download, Check, Bookmark,
   Edit3, Camera, Heart, ThumbsUp, ThumbsDown, Copy,
-  ArrowRight, Undo2, ChevronRight
+  ArrowRight, Undo2, ChevronRight, Lock
 } from 'lucide-react';
-
 
 // --- SUPABASE CONFIGURATION ---
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -64,6 +63,49 @@ import achEndingsReplay from './assets/02_Endings_and_Replay 1.png';
 import achExploration from './assets/03_Vystoria_Compass_Transparent 1.png';
 import achCompletionist from './assets/04_Completionist 1.png';
 import achCommunity from './assets/05_Vystoria_Feedback_Transparent 1.png';
+
+import artStoryJourneySummary from './assets/Story Journey Summary Artwork.png';
+import artFirstStep from './assets/First Step Artwork.png';
+import artOpenPages from './assets/Open Pages Artwork.png';
+import artStorySeeker from './assets/story seeker Artwork.png';
+import artFirstFinale from './assets/First Finale Artwork.png';
+import artStorybound from './assets/Storybound Artwork.png';
+import artSeasonedReader from './assets/Seasoned Reader Artwork.png';
+import artStoryVeteran from './assets/Story Veteran Artwork.png';
+import artStoryLegend from './assets/Story Legend Artwork.png';
+
+import artEndingsReplaySummary from './assets/Endings and Replay.png';
+import artFirstEnding from './assets/First Ending.png';
+import artAnotherEnding from './assets/Another Ending.png';
+import artEndingHunter from './assets/Ending Hunter.png';
+import artReplayBegins from './assets/Replay Begins.png';
+import artSecondJourney from './assets/Second Journey.png';
+import artAllRoads from './assets/All Roads.png';
+
+import artExplorationSummary from './assets/Exploration_Summary.png';
+import artCuriousReader from './assets/Curious_Reader.png';
+import artGenreHopper from './assets/Genre_Hopper.png';
+import artNewHorizons from './assets/New_Horizons.png';
+import artStoryBrowser from './assets/Story_Browser.png';
+import artDeepExplorer from './assets/Deep_Explore.png';
+import artWorldExplorer from './assets/World_Explorer.png';
+
+import artCompletionistSummary from './assets/Completionist_Summary_Transparent 1.png';
+import artFullDiscovery from './assets/Full DIscover.png';
+import artDoubleComplete from './assets/Double_Complete_Transparent 1.png';
+import artFivefoldFinish from './assets/Fivefold_Finish_Transparent.png';
+import artCompletionPro from './assets/Completion_Pro.png';
+import artMasterArchivist from './assets/Master_Archivist 1.png';
+
+
+import artCommunitySummary from './assets/01_Community_Feedback_Summary_Transparent 1.png';
+import artFirstReaction from './assets/02_First_Reaction_Transparent 1.png';
+import artOpinionShared from './assets/03_Opinion_Shared_Transparent 1.png';
+import artTrustedCritic from './assets/04_Trusted_Critic_Transparent 1.png';
+import artFirstReview from './assets/05_First_Review_Transparent 1.png';
+import artCommunityVoice from './assets/06_Community_Voice_Transparent 1.png';
+
+
 // Home screen chrome
 import homeLogo from './assets/Logo1.png';
 //import searchIcon from './assets/search1.png';
@@ -118,6 +160,55 @@ const MOCK_GAMES = [
   { id: '5', title: 'Vinland Saga', subtitle: 'True Warrior', genre: 'Historical', coverImage: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=800&auto=format&fit=crop', bgImage: 'https://images.unsplash.com/photo-1614729939124-032f0b56c9ce?q=80&w=1200&auto=format&fit=crop', likes: 12, dislikes: 0, progress: 100 },
 ];
 
+// --- ACHIEVEMENTS ---------------------------------------------------------
+// Category chrome lives here; the badges themselves come from
+// public.achievements via the get_achievements RPC. plannedTotal is a
+// placeholder for categories that have no catalogue rows yet — the moment you
+// seed one, the DB count takes over and the row becomes tappable.
+const ACHIEVEMENT_CATEGORIES = [
+  { id: 'story',       title: 'Story Journey',        icon: achStoryJourney,  art: artStoryJourneySummary,  plannedTotal: 8 },
+  { id: 'endings',     title: 'Endings & Replay',     icon: achEndingsReplay, art: artEndingsReplaySummary, plannedTotal: 6 },
+  { id: 'exploration', title: 'Exploration',          icon: achExploration,   art: artExplorationSummary,   plannedTotal: 6 },
+  { id: 'completion',  title: 'Completionist',        icon: achCompletionist, art: artCompletionistSummary, plannedTotal: 5 },
+  { id: 'community',   title: 'Community & Feedback', icon: achCommunity,     art: artCommunitySummary,     plannedTotal: 5 },
+];
+
+// Keyed by public.achievements.id. A badge with no entry falls back to its
+// category tile art, so adding a catalogue row never white-screens the grid.
+const ACHIEVEMENT_ART = {
+  // story
+  first_step:      artFirstStep,
+  open_pages:      artOpenPages,
+  story_seeker:    artStorySeeker,
+  first_finale:    artFirstFinale,
+  storybound:      artStorybound,
+  seasoned_reader: artSeasonedReader,
+  story_veteran:   artStoryVeteran,
+  story_legend:    artStoryLegend,
+  // endings
+  first_ending:    artFirstEnding,
+  another_ending:  artAnotherEnding,
+  ending_hunter:   artEndingHunter,
+  replay_begins:   artReplayBegins,
+  second_journey:  artSecondJourney,
+  all_roads:       artAllRoads,
+  // exploration
+  curious_reader:  artCuriousReader,
+  genre_hopper:    artGenreHopper,
+  new_horizons:    artNewHorizons,
+  story_browser:   artStoryBrowser,
+  deep_explorer:   artDeepExplorer,
+  world_explorer:  artWorldExplorer,
+  // completion
+  full_discovery:   artFullDiscovery,
+  double_complete:  artDoubleComplete,
+  fivefold_finish:  artFivefoldFinish,
+  completion_pro:   artCompletionPro,
+  master_archivist: artMasterArchivist,
+
+};
+
+
 // --- REGISTRATION GATE ---------------------------------------------------
 // Vystoria treats a user as "registered" only once a public.profiles row
 // exists. That row is created by the SECURITY DEFINER trigger in
@@ -134,6 +225,20 @@ const calculateProgress = (story, sceneId) => {
   const idx = story.scenes.findIndex(s => s.id === sceneId);
   if (idx === -1) return 0;
   return Math.min(100, Math.round(((idx + 1) / story.scenes.length) * 100));
+};
+
+// An ending is a scene the engine cannot advance out of: no choices, and no
+// next_scene_default that resolves to a real scene. This MUST match the
+// terminal-scene test in advanceStory — if the two definitions drift, the
+// "All Roads" badge becomes unreachable.
+const countStoryEndings = (story) => {
+  if (!story?.scenes?.length) return 0;
+  const ids = new Set(story.scenes.map(s => s.id));
+  return story.scenes.filter(s => {
+    const hasChoices = Array.isArray(s.choices) && s.choices.length > 0;
+    const hasNext    = s.next_scene_default && ids.has(s.next_scene_default);
+    return !hasChoices && !hasNext;
+  }).length;
 };
 
 export default function App() {
@@ -241,6 +346,69 @@ export default function App() {
   //628={authMessage && <p className="text-green-400 text-xs text-left">{authMessage}</p>}
 
 
+  // --- ACHIEVEMENTS STATE ---
+  const [achievements, setAchievements] = useState([]);                       // rows from get_achievements()
+  const [achievementsLoading, setAchievementsLoading] = useState(false);
+  const [activeAchievementCategory, setActiveAchievementCategory] = useState(null); // null = category list
+
+  // evaluate_achievements() is idempotent and pinned to auth.uid() server-side.
+  // The user_progress trigger already unlocks badges the instant progress is
+  // written, so this call is belt-and-braces for the case where a trigger was
+  // skipped (e.g. rows imported directly, or a warning swallowed a failure).
+  const fetchAchievements = async (activeUser = user) => {
+    if (!activeUser) { setAchievements([]); return; }
+    setAchievementsLoading(true);
+    try {
+      const { error: evalError } = await supabase.rpc('evaluate_achievements');
+      if (evalError) console.error('evaluate_achievements failed:', evalError);
+
+      const { data, error } = await supabase.rpc('get_achievements');
+      if (error) throw error;
+      setAchievements(data || []);
+    } catch (err) {
+      console.error('Failed to load achievements:', err);
+    } finally {
+      setAchievementsLoading(false);
+    }
+  };
+
+  // Refetch whenever the tab is opened, and again on returning from the engine
+  // (currentView flips engine -> main), so a badge earned mid-story is present
+  // by the time the player looks for it.
+  useEffect(() => {
+    if (currentView === 'main' && currentTab === 'achievements' && user) {
+      fetchAchievements(user);
+    }
+  }, [currentView, currentTab, user]);
+  
+  // --- SCENE VISIT TRACKING (Completionist) ---
+  // Scene changes happen every few seconds, so visits are buffered in a ref and
+  // flushed in batches. A ref, not state: this must never trigger a re-render
+  // mid-scene, and the engine reads it only at flush time.
+  const visitedScenesRef = useRef(new Set());
+  const visitFlushStoryRef = useRef(null);
+
+  // record_scene_visits dedupes server-side, so re-sending a scene is harmless
+  // and we don't need to track what was already flushed. The buffer is only
+  // cleared on a confirmed success — a failed flush is retried by the next one.
+  const flushSceneVisits = async () => {
+    const storyId = visitFlushStoryRef.current;
+    const scenes = Array.from(visitedScenesRef.current);
+    if (!user || !storyId || scenes.length === 0) return;
+
+    try {
+      const { error } = await supabase.rpc('record_scene_visits', {
+        story_id_input: storyId,
+        scene_ids_input: scenes,
+      });
+      if (error) throw error;
+      visitedScenesRef.current = new Set();
+    } catch (err) {
+      console.error('record_scene_visits failed:', err);
+    }
+  };
+
+
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showAccNotFound, setShowAccNotFound] = useState(false);
@@ -255,6 +423,19 @@ export default function App() {
   const [cloudGames, setCloudGames] = useState([]);
   const [storyData, setStoryData] = useState(null);
   const [currentSceneId, setCurrentSceneId] = useState(null);
+
+  // Every scene the player lands on goes in the buffer, including the one they
+  // resume onto. Cheap — a Set add, no network.
+  //
+  // Must live BELOW the currentSceneId declaration: a dependency array is a
+  // plain array literal evaluated during render, so referencing a `const`
+  // declared further down throws a TDZ ReferenceError before the first paint.
+  useEffect(() => {
+    if (currentView === 'engine' && currentSceneId && selectedGame?.isCloud) {
+      visitFlushStoryRef.current = selectedGame.id;
+      visitedScenesRef.current.add(currentSceneId);
+    }
+  }, [currentSceneId, currentView, selectedGame]);
   const [sequenceIndex, setSequenceIndex] = useState(0);
   const [playerError, setPlayerError] = useState(null);
 
@@ -467,6 +648,7 @@ export default function App() {
     } : prev);
 
     try {
+      // Aggregate counters on public.stories — unchanged.
       await supabase.rpc('adjust_story_reaction', {
         story_id_input: gameId,
         new_reaction: nextReaction,
@@ -474,6 +656,20 @@ export default function App() {
       });
     } catch (err) {
       console.error('Failed to sync reaction:', err);
+    }
+
+    try {
+      // Per-user ledger the Community badges count. user_metadata is still
+      // written above for the optimistic UI, but it is no longer the only
+      // record of who reacted to what — and it is not what the badges trust,
+      // since updateUser() lets a client write it directly.
+      const { error } = await supabase.rpc('record_story_reaction', {
+        story_id_input: gameId,
+        reaction_input: nextReaction
+      });
+      if (error) throw error;
+    } catch (err) {
+      console.error('record_story_reaction failed:', err);
     }
   };
 
@@ -494,9 +690,28 @@ export default function App() {
     setTimeout(() => setSupportCopied(false), 1500);
   };
 
-  const handleSearchResultClick = async (game) => {
+  
+  // Single entry point into game_detail from anywhere in the app. Previously
+  // this lived inside renderHome, so novels opened from Search or the Library
+  // never recorded a view — which would have quietly broken the "View N novel
+  // pages" badges. Hoisted so all three call sites share it.
+  //
+  // record_story_view handles both the global trending counter and the
+  // per-user story_views ledger the Exploration badges read, and dedupes per
+  // user/story/hour server-side. Safe to call on every tap, no debounce needed.
+  const openGame = (game) => {
+    if (!game) return;
     setSelectedGame(game);
     setCurrentView('game_detail');
+
+    if (game.isCloud && user) {
+      supabase.rpc('record_story_view', { story_id_input: game.id })
+        .then(({ error }) => { if (error) console.error('record_story_view failed:', error); });
+    }
+  };
+  
+  const handleSearchResultClick = async (game) => {
+    openGame(game);
 
     if (game.isCloud) {
       try {
@@ -535,6 +750,27 @@ export default function App() {
       setPlayerState('main_menu');
       setCurrentView('engine');
 
+      if (user && selectedGame.isCloud) {
+        // Source of truth for "novels started". Creates a 0% user_progress row
+        // on conflict-do-nothing, which fires the achievement trigger.
+        supabase.rpc('mark_story_started', { story_id_input: selectedGame.id })
+          .then(({ error: startError }) => {
+            if (startError) console.error('mark_story_started failed:', startError);
+          });
+
+        // Needed by the "All Roads" badge. Write-once server-side, so the
+        // first player to open a story fixes the number for everyone.
+        supabase.rpc('report_story_structure', {
+          story_id_input: selectedGame.id,
+          ending_count_input: countStoryEndings(json),
+          scene_count_input: json.scenes.length,
+        }).then(({ error: structError }) => {
+          if (structError) console.error('report_story_structure failed:', structError);
+        });
+      }
+
+      // Legacy mirror. Kept so anything still reading userMetadata.stats keeps
+      // working; achievements no longer depend on it.
       if (!userMetadata.stats.gamesStarted.includes(selectedGame.id)) {
         updateMetadata({ stats: { ...userMetadata.stats, gamesStarted: [...userMetadata.stats.gamesStarted, selectedGame.id] }});
       }
@@ -573,6 +809,8 @@ export default function App() {
     if (slot && slot.sceneId) {
       setCurrentSceneId(slot.sceneId);
       setSequenceIndex(0);
+      visitedScenesRef.current = new Set();
+      visitFlushStoryRef.current = selectedGame.id;
       setPlayerState('playing');
     }
   };
@@ -603,20 +841,48 @@ export default function App() {
     }
 
     if (!hasChoices) {
-      // Reached a real ending (no choices, no valid next scene). Persist
-      // 100% progress and show the End screen instead of silently doing
-      // nothing (or worse, looping).
       if (user && selectedGame) {
-        supabase.from('user_progress').upsert({
-          user_id: user.id, story_id: selectedGame.id, current_scene_id: currentSceneId,
-          save_slots: saveSlots, progress_percent: 100, updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id, story_id' }).then(() => {
-          setCloudGames(prev => prev.map(g => g.id === selectedGame.id ? { ...g, progress: 100 } : g));
-          setSelectedGame(prev => prev ? { ...prev, progress: 100 } : prev);
-        }).catch(err => console.error('Failed to persist ending progress:', err));
+        visitedScenesRef.current.add(currentSceneId);
+        // Flush first: the ending scene itself is part of "fully explored", and
+        // the player may exit straight from the end screen without another flush.
+        flushSceneVisits().finally(() => {
+          supabase.rpc('record_story_ending', {
+            story_id_input: selectedGame.id,
+            ending_scene_id_input: currentSceneId,
+          }).then(({ error }) => {
+            if (error) {
+              console.error('record_story_ending failed:', error);
+              return;
+            }
+            setCloudGames(prev => prev.map(g => g.id === selectedGame.id ? { ...g, progress: 100 } : g));
+            setSelectedGame(prev => prev ? { ...prev, progress: 100 } : prev);
+          });
+        });
       }
       setPlayerState('story_end');
     }
+  };
+
+  // Single entry point for every "Start New Game" / "Play Again" button.
+  // record_story_replay is guarded server-side (it only counts when
+  // completed_at is already set), so the client can call it unconditionally
+  // and never has to work out whether this is a first run or a replay.
+  const startNewPlaythrough = () => {
+    setSequenceIndex(0);
+    setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id);
+    setPlayerState('playing');
+
+    if (user && selectedGame?.isCloud) {
+      supabase.rpc('record_story_replay', { story_id_input: selectedGame.id })
+        .then(({ error }) => { if (error) console.error('record_story_replay failed:', error); });
+    }
+  };
+
+  // Leaving the engine is the main flush point — most sessions end here rather
+  // than at an ending.
+  const exitToDetail = () => {
+    flushSceneVisits();
+    setCurrentView('game_detail');
   };
 
   // --- FIXED: validates the choice's target scene actually exists before
@@ -745,6 +1011,9 @@ export default function App() {
   const navigateTo = (view, tab = 'home') => {
     setCurrentView(view);
     if (view === 'main') setCurrentTab(tab);
+    // Tapping a nav tab always returns to the category list, never a stale
+    // drill-down from a previous visit.
+    setActiveAchievementCategory(null);
     window.scrollTo(0, 0);
   };
 
@@ -1117,7 +1386,7 @@ const renderAuthEmail = () => (
 
     const categories = [
       { title: 'Horror',  list: displayList.filter(g => g.genre?.toLowerCase().includes('horror')) },
-      { title: 'Scifi',   list: displayList.filter(g => g.genre?.toLowerCase().includes('sci-fi') || g.genre?.toLowerCase().includes('action')) },
+      { title: 'Action',   list: displayList.filter(g => g.genre?.toLowerCase().includes('action') || g.genre?.toLowerCase().includes('Scifi')) },
       { title: 'Mystery', list: displayList.filter(g => g.genre?.toLowerCase().includes('mystery') || g.genre?.toLowerCase().includes('adventure')) },
     ];
 
@@ -1821,7 +2090,7 @@ const renderAuthEmail = () => (
                   return (
                     <div
                       key={game.id}
-                      onClick={() => { setSelectedGame(game); setCurrentView('game_detail'); }}
+                      onClick={() => openGame(game)}
                       className="relative flex flex-col rounded-2xl overflow-hidden cursor-pointer group
                                  bg-[#15111F] border border-white/10 shadow-lg shadow-black/50"
                     >
@@ -1923,21 +2192,22 @@ const renderAuthEmail = () => (
     );
   };
 
-    const renderAchievements = () => {
-    // Placeholder counts. Wire these to userMetadata.stats when the
-    // achievement logic lands — the UI below derives everything else
-    // (totals, percentages, bar widths) from this array, so only these
-    // two numbers per row need to change.
-    const categories = [
-      { id: 'story',       title: 'Story Journey',        icon: achStoryJourney,   unlocked: 4, total: 8 },
-      { id: 'endings',     title: 'Endings & Replay',     icon: achEndingsReplay,  unlocked: 1, total: 6 },
-      { id: 'exploration', title: 'Exploration',          icon: achExploration,    unlocked: 2, total: 6 },
-      { id: 'completion',  title: 'Completionist',        icon: achCompletionist,  unlocked: 1, total: 5 },
-      { id: 'community',   title: 'Community & Feedback', icon: achCommunity,      unlocked: 0, total: 5 },
-    ];
+    // ---------- ACHIEVEMENTS: CATEGORY LIST ----------
+  const renderAchievements = () => {
+    // Totals derive from the catalogue rows we actually fetched. A category
+    // with no rows yet falls back to plannedTotal and is not tappable.
+    const categories = ACHIEVEMENT_CATEGORIES.map((cat) => {
+      const rows = achievements.filter(a => a.category === cat.id);
+      return {
+        ...cat,
+        unlocked:  rows.filter(a => a.unlocked).length,
+        total:     rows.length || cat.plannedTotal,
+        available: rows.length > 0,
+      };
+    });
 
     const totalUnlocked = categories.reduce((sum, c) => sum + c.unlocked, 0);
-    const totalBadges = categories.reduce((sum, c) => sum + c.total, 0);
+    const totalBadges   = categories.reduce((sum, c) => sum + c.total, 0);
     const overallPercent = totalBadges > 0 ? Math.round((totalUnlocked / totalBadges) * 100) : 0;
 
     return (
@@ -2010,10 +2280,13 @@ const renderAuthEmail = () => (
               return (
                 <div
                   key={cat.id}
-                  className="flex items-center gap-3.5 p-3 rounded-2xl cursor-pointer
-                             bg-[#15111F]/85 backdrop-blur-md border border-[#9457EB]/25
-                             shadow-lg shadow-black/40 hover:border-[#9457EB]/60
-                             active:scale-[0.99] transition-all"
+                  onClick={() => { if (cat.available) setActiveAchievementCategory(cat.id); }}
+                  className={`flex items-center gap-3.5 p-3 rounded-2xl
+                              bg-[#15111F]/85 backdrop-blur-md border border-[#9457EB]/25
+                              shadow-lg shadow-black/40 transition-all
+                              ${cat.available
+                                ? 'cursor-pointer hover:border-[#9457EB]/60 active:scale-[0.99]'
+                                : 'opacity-55'}`}
                 >
                   <div className="w-[15vw] max-w-[60px] aspect-square flex-shrink-0 rounded-xl
                                   flex items-center justify-center
@@ -2038,7 +2311,7 @@ const renderAuthEmail = () => (
                       className="font-manrope text-[#C2BBD4] mt-0.5"
                       style={{ fontSize: 'clamp(0.68rem, 2.9vw, 0.78rem)' }}
                     >
-                      {cat.unlocked} of {cat.total} unlocked
+                      {cat.available ? `${cat.unlocked} of ${cat.total} unlocked` : 'Coming soon'}
                     </p>
 
                     <div className="w-full h-[6px] rounded-full bg-white/12 overflow-hidden mt-2">
@@ -2054,6 +2327,184 @@ const renderAuthEmail = () => (
               );
             })}
           </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ---------- ACHIEVEMENTS: CATEGORY DETAIL (Story Journey, etc.) ----------
+  // Fully data-driven off get_achievements(). Seeding a new category in
+  // public.achievements + adding its artwork to ACHIEVEMENT_ART is enough to
+  // light this screen up for it — no changes needed here.
+  const renderAchievementCategory = () => {
+    const cat = ACHIEVEMENT_CATEGORIES.find(c => c.id === activeAchievementCategory);
+    if (!cat) return null;
+
+    const rows = achievements
+      .filter(a => a.category === activeAchievementCategory)
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+
+    const unlockedCount = rows.filter(a => a.unlocked).length;
+    const total   = rows.length;
+    const percent = total > 0 ? Math.round((unlockedCount / total) * 100) : 0;
+
+    return (
+      <div className="flex-1 min-h-0 flex flex-col relative bg-[#1A0F33] text-white overflow-hidden font-manrope">
+
+        <div className="absolute inset-0 z-0">
+          <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/80 via-[#0B0B14]/60 to-[#0B0B14]/85" />
+        </div>
+
+        <div
+          className="relative z-10 flex-1 min-h-0 overflow-y-auto no-scrollbar"
+          style={{
+            paddingTop:    'calc(env(safe-area-inset-top, 0px) + clamp(0.75rem, 2.5vh, 1.25rem))',
+            paddingBottom: 'clamp(1.25rem, 4vh, 2rem)',
+            paddingLeft:   'calc(env(safe-area-inset-left, 0px) + 1.25rem)',
+            paddingRight:  'calc(env(safe-area-inset-right, 0px) + 1.25rem)',
+          }}
+        >
+
+          {/* Back — same circular treatment as the Home category drill-down */}
+          <button
+            onClick={() => setActiveAchievementCategory(null)}
+            aria-label="Back"
+            className="w-11 h-11 flex-shrink-0 rounded-full flex items-center justify-center mb-4
+                       bg-[#1A0F33]/70 backdrop-blur-md border border-[#9457EB]/50
+                       hover:border-[#9457EB] active:scale-90 transition-all"
+          >
+            <Undo2 className="w-5 h-5 text-[#A855F7]" strokeWidth={2.25} />
+          </button>
+
+          {/* Title — Fraunces, matching the genre drill-down */}
+          <h1
+            className="font-fraunces font-bold text-white leading-[1.05] tracking-[-0.01em] mb-5"
+            style={{ fontSize: 'clamp(1.9rem, 8.4vw, 2.6rem)' }}
+          >
+            {cat.title}
+          </h1>
+
+          {/* ---------- SUMMARY CARD ---------- */}
+          <div className="rounded-2xl border border-[#9457EB]/40 bg-[#15111F]/85 backdrop-blur-md
+                          shadow-lg shadow-black/50 p-4 mb-6">
+            <div className="flex items-center gap-4">
+              <img
+                src={cat.art || cat.icon}
+                alt=""
+                aria-hidden="true"
+                className="w-[28vw] max-w-[118px] flex-shrink-0 object-contain
+                           drop-shadow-[0_0_18px_rgba(168,85,247,0.45)]"
+              />
+
+              <div className="flex-1 min-w-0">
+                <h2
+                  className="font-manrope font-semibold text-white leading-[1.2]"
+                  style={{ fontSize: 'clamp(1.05rem, 4.6vw, 1.35rem)' }}
+                >
+                  {unlockedCount} of {total} unlocked
+                </h2>
+
+                <p
+                  className="font-manrope text-[#C2BBD4] mt-1"
+                  style={{ fontSize: 'clamp(0.72rem, 3.1vw, 0.85rem)' }}
+                >
+                  {percent}% complete
+                </p>
+
+                <div className="w-full h-[7px] rounded-full bg-white/12 overflow-hidden mt-3">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-[#A855F7] to-[#7C3AED] transition-all"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ---------- BADGE GRID ---------- */}
+          <h3
+            className="font-manrope font-medium text-white tracking-wide mb-3"
+            style={{ fontSize: 'clamp(0.9rem, 3.9vw, 1.05rem)' }}
+          >
+            Achievements
+          </h3>
+
+          {achievementsLoading && rows.length === 0 ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-7 h-7 text-[#A855F7] animate-spin" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {rows.map((a, idx) => {
+                const value    = Math.min(a.current_value || 0, a.threshold);
+                const barWidth = a.threshold > 0 ? Math.min(100, Math.round((value / a.threshold) * 100)) : 0;
+                const art      = ACHIEVEMENT_ART[a.id] || cat.icon;
+
+                return (
+                  <div
+                    key={a.id}
+                    className={`flex flex-col rounded-2xl p-3 bg-[#15111F]/85 backdrop-blur-md
+                                shadow-lg shadow-black/40 transition-all
+                                ${idx === rows.length - 1 && rows.length % 2 === 1 ? 'col-span-2' : ''}
+                                ${a.unlocked
+                                  ? 'border border-[#9457EB]/70 shadow-[0_0_18px_rgba(168,85,247,0.16)]'
+                                  : 'border border-[#9457EB]/70'}`}
+                  >
+                                        
+                        {/* Title row — full card width. The title and the badge are
+                        the only things competing here, so even the longest badge
+                        name clears comfortably. */}
+                    <div className="flex items-start justify-between gap-1.5 mb-2.5">
+                      <h4
+                        className="font-manrope font-semibold text-white leading-[1.2] min-w-0 break-words"
+                        style={{ fontSize: '0.85rem' }}
+                      >
+                        {a.title}
+                      </h4>
+
+                      {a.unlocked ? (
+                        <CheckCircle2
+                          className="w-[19px] h-[19px] flex-shrink-0 text-white fill-[#A855F7]"
+                          strokeWidth={2.25}
+                        />
+                      ) : (
+                        <span
+                          aria-hidden="true"
+                          className="w-[19px] h-[19px] flex-shrink-0 rounded-full
+                                     border border-[#6B6484]/70 flex items-center justify-center"
+                        >
+                          <Lock className="w-[10px] h-[10px] text-[#6B6484]" strokeWidth={2.5} />
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Artwork + description. Fixed px, NOT vw — this card sits
+                        inside max-w-[420px], so vw units scale with the browser
+                        window while the card width stays put. That mismatch is
+                        what was crushing the title column on desktop. */}
+                    <div className="flex items-center gap-2.5">
+                      <img
+                        src={art}
+                        alt=""
+                        aria-hidden="true"
+                        className={`w-[44px] flex-shrink-0 object-contain transition-all
+                                    ${a.unlocked
+                                      ? 'drop-shadow-[0_0_12px_rgba(168,85,247,0.4)]'
+                                      : 'opacity-55'}`}
+                      />
+                      <p
+                        className="flex-1 min-w-0 font-manrope text-[#C2BBD4] leading-[1.35] break-words"
+                        style={{ fontSize: '0.66rem' }}
+                      >
+                        {a.description}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -2759,7 +3210,9 @@ const renderAuthEmail = () => (
               {currentTab === 'home' && renderHome()}
               {currentTab === 'search' && renderSearch()}
               {currentTab === 'library' && renderLibrary()}
-              {currentTab === 'achievements' && renderAchievements()}
+              {currentTab === 'achievements' && (
+                activeAchievementCategory ? renderAchievementCategory() : renderAchievements()
+              )}
               {currentTab === 'profile' && renderProfile()}
             </div>
           )}

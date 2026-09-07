@@ -205,6 +205,12 @@ const ACHIEVEMENT_ART = {
   fivefold_finish:  artFivefoldFinish,
   completion_pro:   artCompletionPro,
   master_archivist: artMasterArchivist,
+  // community
+  first_reaction:     artFirstReaction,
+  opinion_shared:     artOpinionShared,
+  trusted_critic:     artTrustedCritic,
+  devoted_critic:     artFirstReview,
+  voice_of_the_crowd: artCommunityVoice,
 
 };
 
@@ -1432,7 +1438,7 @@ const renderAuthEmail = () => (
 
           <div className="absolute inset-0 z-0">
             <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
-            <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/70 via-[#0B0B14]/40 to-[#0B0B14]/80" />
+            <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/75 via-[#0B0B14]/50 to-[#0B0B14]/65" />
           </div>
 
           <div
@@ -1584,6 +1590,7 @@ const renderAuthEmail = () => (
         {/* Artwork — same treatment as Library and the auth screens */}
         <div className="absolute inset-0 z-0">
           <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/75 via-[#0B0B14]/50 to-[#0B0B14]/55" />
         </div>
 
         <div
@@ -1620,7 +1627,7 @@ const renderAuthEmail = () => (
           <div
             onClick={() => openGame(featuredGame)}
             className="relative flex flex-col rounded-[1.5rem] overflow-hidden cursor-pointer
-                       border border-white/10 bg-[#15111F] shadow-2xl shadow-black/60 mb-7"
+                       border border-[#322253] bg-gradient-to-b from-[#10082F] to-[#0A082B] shadow-2xl shadow-black/60 mb-7"
           >
             {/* Cover art */}
             <div className="relative w-full aspect-[4/3] flex-shrink-0 overflow-hidden">
@@ -1710,7 +1717,7 @@ const renderAuthEmail = () => (
                       key={game.id}
                       onClick={() => openGame(game)}
                       className="flex items-center gap-3 p-2.5 rounded-2xl cursor-pointer group
-                                 bg-[#15111F]/85 backdrop-blur-md border border-white/10
+                                 bg-gradient-to-b from-[#10082F] to-[#0A082B] backdrop-blur-md border border-[#322253]
                                  shadow-lg shadow-black/40 active:scale-[0.99] transition-transform"
                     >
                       <div className="w-[22vw] max-w-[92px] aspect-square flex-shrink-0 rounded-xl overflow-hidden">
@@ -1729,7 +1736,7 @@ const renderAuthEmail = () => (
                           {game.title}
                         </h4>
 
-                        <div className="w-full h-[4px] rounded-full bg-white/15 overflow-hidden mt-2.5">
+                        <div className="w-full h-[4px] rounded-full bg-[#25134D] overflow-hidden mt-2.5">
                           <div
                             className="h-full rounded-full bg-gradient-to-r from-[#A855F7] to-[#7C3AED] transition-all"
                             style={{ width: `${progress}%` }}
@@ -1783,7 +1790,7 @@ const renderAuthEmail = () => (
                           {game.title}
                         </h4>
                         {progress > 0 && (
-                          <div className="w-full h-[3px] rounded-full bg-white/15 overflow-hidden mt-1.5">
+                          <div className="w-full h-[3px] rounded-full bg-[#25134D] overflow-hidden mt-1.5">
                             <div
                               className="h-full rounded-full bg-gradient-to-r from-[#A855F7] to-[#7C3AED]"
                               style={{ width: `${progress}%` }}
@@ -1812,7 +1819,7 @@ const renderAuthEmail = () => (
                       onClick={() => openGame(game)}
                       className="flex-shrink-0 w-[34vw] max-w-[140px] snap-start flex flex-col
                                  rounded-2xl overflow-hidden cursor-pointer group
-                                 bg-[#15111F] border border-white/10 shadow-lg shadow-black/50"
+                                 bg-gradient-to-b from-[#10082F] to-[#0A082B] border border-[#322253] shadow-lg shadow-black/50"
                     >
                       <div className="relative w-full aspect-[3/4] overflow-hidden">
                         <img
@@ -1964,6 +1971,7 @@ const renderAuthEmail = () => (
             aria-hidden="true"
             className="w-full h-full object-cover object-center"
           />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/75 via-[#0B0B14]/50 to-[#0B0B14]/65" />
           {/* Scrim so cards and body copy stay legible over the illustration.
               Drop this div if you want the art at full strength. */}
           
@@ -2067,7 +2075,7 @@ const renderAuthEmail = () => (
                   <button
                     key={f.id}
                     onClick={() => setLibraryFilter(f.id)}
-                    className={`flex-shrink-0 min-h-[36px] px-4 rounded-md font-manrope font-semibold
+                    className={`flex-shrink-0 min-h-[36px] px-4 rounded-md font-Fraunces
                                 tracking-wide transition-all whitespace-nowrap active:scale-[0.97]
                                 ${active
                                   ? 'bg-gradient-to-r from-[#7C3AED] to-[#9457EB] text-white shadow-lg shadow-purple-900/40 border border-transparent'
@@ -2217,6 +2225,19 @@ const renderAuthEmail = () => (
         <div className="absolute inset-0 z-0">
           <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
           <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/80 via-[#0B0B14]/60 to-[#0B0B14]/85" />
+
+          {/* Achievements-only purple bloom. Sits ABOVE the scrim so the scrim
+              doesn't mute it — layered under it, the 32% alpha all but vanishes.
+              Inline style, not Tailwind: arbitrary values can't contain the
+              commas a radial-gradient needs. */}
+          <div
+            className="absolute inset-0"
+            aria-hidden="true"
+            style={{
+              background:
+                'radial-gradient(circle at 50% 22%, rgba(52, 32, 111, 0.32) 0%, rgba(10, 6, 42, 0) 70%)',
+            }}
+          />
         </div>
 
         <div
@@ -2230,7 +2251,8 @@ const renderAuthEmail = () => (
         >
 
           {/* ---------- SUMMARY CARD ---------- */}
-          <div className="rounded-2xl border border-[#9457EB]/40 bg-[#15111F]/85 backdrop-blur-md
+          <div className="rounded-2xl border border-[#7140AD]
+                          bg-gradient-to-b from-[#10082F] to-[#0A082B]
                           shadow-lg shadow-black/50 p-4 mb-6">
             <div className="flex items-center gap-4">
               <img
@@ -2256,9 +2278,9 @@ const renderAuthEmail = () => (
                   {overallPercent}% complete
                 </p>
 
-                <div className="w-full h-[7px] rounded-full bg-white/12 overflow-hidden mt-3">
+                <div className="w-full h-[7px] rounded-full bg-[#25134D] overflow-hidden mt-3">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-[#A855F7] to-[#7C3AED] transition-all"
+                    className="h-full rounded-full bg-gradient-to-r from-[#7845FF] to-[#9B4DFF] transition-all"
                     style={{ width: `${overallPercent}%` }}
                   />
                 </div>
@@ -2282,10 +2304,11 @@ const renderAuthEmail = () => (
                   key={cat.id}
                   onClick={() => { if (cat.available) setActiveAchievementCategory(cat.id); }}
                   className={`flex items-center gap-3.5 p-3 rounded-2xl
-                              bg-[#15111F]/85 backdrop-blur-md border border-[#9457EB]/25
+                              bg-gradient-to-b from-[#10082F] to-[#0A082B]
+                              border border-[#7140AD]
                               shadow-lg shadow-black/40 transition-all
                               ${cat.available
-                                ? 'cursor-pointer hover:border-[#9457EB]/60 active:scale-[0.99]'
+                                ? 'cursor-pointer hover:border-[#9B4DFF] active:scale-[0.99]'
                                 : 'opacity-55'}`}
                 >
                   <div className="w-[15vw] max-w-[60px] aspect-square flex-shrink-0 rounded-xl
@@ -2314,15 +2337,15 @@ const renderAuthEmail = () => (
                       {cat.available ? `${cat.unlocked} of ${cat.total} unlocked` : 'Coming soon'}
                     </p>
 
-                    <div className="w-full h-[6px] rounded-full bg-white/12 overflow-hidden mt-2">
+                    <div className="w-full h-[6px] rounded-full bg-[#25134D] overflow-hidden mt-2">
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-[#A855F7] to-[#7C3AED] transition-all"
+                        className="h-full rounded-full bg-gradient-to-r from-[#7845FF] to-[#9B4DFF] transition-all"
                         style={{ width: `${percent}%` }}
                       />
                     </div>
                   </div>
 
-                  <ChevronRight className="w-6 h-6 flex-shrink-0 text-[#A855F7]" strokeWidth={2} />
+                  <ChevronRight className="w-6 h-6 flex-shrink-0 text-[#9B4DFF]" strokeWidth={2} />
                 </div>
               );
             })}
@@ -2354,6 +2377,19 @@ const renderAuthEmail = () => (
         <div className="absolute inset-0 z-0">
           <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
           <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/80 via-[#0B0B14]/60 to-[#0B0B14]/85" />
+
+          {/* Achievements-only purple bloom. Sits ABOVE the scrim so the scrim
+              doesn't mute it — layered under it, the 32% alpha all but vanishes.
+              Inline style, not Tailwind: arbitrary values can't contain the
+              commas a radial-gradient needs. */}
+          <div
+            className="absolute inset-0"
+            aria-hidden="true"
+            style={{
+              background:
+                'radial-gradient(circle at 50% 22%, rgba(52, 32, 111, 0.32) 0%, rgba(10, 6, 42, 0) 70%)',
+            }}
+          />
         </div>
 
         <div
@@ -2386,7 +2422,8 @@ const renderAuthEmail = () => (
           </h1>
 
           {/* ---------- SUMMARY CARD ---------- */}
-          <div className="rounded-2xl border border-[#9457EB]/40 bg-[#15111F]/85 backdrop-blur-md
+          <div className="rounded-2xl border border-[#7140AD]
+                          bg-gradient-to-b from-[#10082F] to-[#0A082B]
                           shadow-lg shadow-black/50 p-4 mb-6">
             <div className="flex items-center gap-4">
               <img
@@ -2412,9 +2449,9 @@ const renderAuthEmail = () => (
                   {percent}% complete
                 </p>
 
-                <div className="w-full h-[7px] rounded-full bg-white/12 overflow-hidden mt-3">
+                <div className="w-full h-[7px] rounded-full bg-[#25134D] overflow-hidden mt-3">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-[#A855F7] to-[#7C3AED] transition-all"
+                    className="h-full rounded-full bg-gradient-to-r from-[#7845FF] to-[#9B4DFF] transition-all"
                     style={{ width: `${percent}%` }}
                   />
                 </div>
@@ -2432,7 +2469,7 @@ const renderAuthEmail = () => (
 
           {achievementsLoading && rows.length === 0 ? (
             <div className="flex items-center justify-center py-16">
-              <Loader2 className="w-7 h-7 text-[#A855F7] animate-spin" />
+              <Loader2 className="w-7 h-7 text-[#9B4DFF] animate-spin" />
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
@@ -2442,17 +2479,17 @@ const renderAuthEmail = () => (
                 const art      = ACHIEVEMENT_ART[a.id] || cat.icon;
 
                 return (
-                  <div
+                                    <div
                     key={a.id}
-                    className={`flex flex-col rounded-2xl p-3 bg-[#15111F]/85 backdrop-blur-md
+                    className={`flex flex-col rounded-2xl p-3
+                                bg-gradient-to-b from-[#10082F] to-[#0A082B]
                                 shadow-lg shadow-black/40 transition-all
                                 ${idx === rows.length - 1 && rows.length % 2 === 1 ? 'col-span-2' : ''}
                                 ${a.unlocked
-                                  ? 'border border-[#9457EB]/70 shadow-[0_0_18px_rgba(168,85,247,0.16)]'
-                                  : 'border border-[#9457EB]/70'}`}
+                                  ? 'border border-[#7140AD] shadow-[0_0_18px_rgba(120,69,255,0.18)]'
+                                  : 'border border-[#5A477F]'}`}
                   >
-                                        
-                        {/* Title row — full card width. The title and the badge are
+                    {/* Title row — full card width. The title and the badge are
                         the only things competing here, so even the longest badge
                         name clears comfortably. */}
                     <div className="flex items-start justify-between gap-1.5 mb-2.5">
@@ -2465,7 +2502,7 @@ const renderAuthEmail = () => (
 
                       {a.unlocked ? (
                         <CheckCircle2
-                          className="w-[19px] h-[19px] flex-shrink-0 text-white fill-[#A855F7]"
+                          className="w-[19px] h-[19px] flex-shrink-0 text-white fill-[#9B4DFF]"
                           strokeWidth={2.25}
                         />
                       ) : (
@@ -2490,7 +2527,7 @@ const renderAuthEmail = () => (
                         aria-hidden="true"
                         className={`w-[44px] flex-shrink-0 object-contain transition-all
                                     ${a.unlocked
-                                      ? 'drop-shadow-[0_0_12px_rgba(168,85,247,0.4)]'
+                                      ? 'drop-shadow-[0_0_12px_rgba(155,77,255,0.45)]'
                                       : 'opacity-55'}`}
                       />
                       <p
@@ -2499,6 +2536,37 @@ const renderAuthEmail = () => (
                       >
                         {a.description}
                       </p>
+                    </div>
+
+                    {/* Footer. mt-auto pins it to the bottom so both cards in a
+                        row line up even when one has a taller description. */}
+                    <div className="mt-auto pt-3">
+                      {a.unlocked ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-[6px] h-[6px] rounded-full bg-[#9B4DFF] flex-shrink-0" />
+                          <span
+                            className="font-manrope font-medium text-[#9B4DFF]"
+                            style={{ fontSize: '0.66rem' }}
+                          >
+                            Unlocked
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          <p
+                            className="font-manrope text-[#C2BBD4] mb-1.5"
+                            style={{ fontSize: '0.66rem' }}
+                          >
+                            {value}/{a.threshold}
+                          </p>
+                          <div className="w-full h-[5px] rounded-full bg-[#25134D] overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-[#7845FF] to-[#9B4DFF] transition-all"
+                              style={{ width: `${barWidth}%` }}
+                            />
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 );
@@ -2547,7 +2615,7 @@ const renderAuthEmail = () => (
         {/* Artwork — same treatment as Home, Library and Search */}
         <div className="absolute inset-0 z-0">
           <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/75 via-[#0B0B14]/50 to-[#0B0B14]/85" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/75 via-[#0B0B14]/50 to-[#0B0B14]/65" />
         </div>
 
         <div

@@ -38,6 +38,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 
 // --- YOUR CUSTOM ASSETS ---
 import backIcon from './assets/back.svg';
+import backArrowIcon from './assets/Back11.png';
 import logoUrl from './assets/logo.png';
 import empLib from './assets/empty-library.svg';
 import supp from './assets/support.svg';
@@ -53,8 +54,30 @@ import deleteIcon from './assets/Delete Icon.png';
 import mailIcon1 from './assets/mailIcon1.png';
 //import navHomeIcon from './assets/homee.svg';
 //import navTrophyIcon from './assets/trophy.svg';
-import navLibraryIcon from './assets/library.svg';
+//import navLibraryIcon from './assets/library.svg';
 //import navProfileIcon from './assets/profile.svg';
+//import navHomeIcon from './assets/homeee.png';
+//import navTrophyIcon from './assets/achievementsss.png';
+//import navLibraryIcon from './assets/Libraryyy.png';
+//import navProfileIcon from './assets/profileee.png';
+
+//import navHomeIconActive from './assets/Homee1.png';
+//import navTrophyIconActive from './assets/achievementss1.png';
+//import navLibraryIconActive from './assets/Libraryy1.png';
+//import navProfileIconActive from './assets/Profilee1.png';
+
+// Nav bar — ONE file per tab. NavBtn renders these as a CSS mask, so the
+// file's own fill is discarded and colour comes from CSS. The old off/on
+// pairs had different transparent padding, which made inactive tabs render
+// visibly smaller under `maskSize: contain`.
+import navHomeIcon    from './assets/Homee1.png';
+import navTrophyIcon  from './assets/achievementss1.png';
+import navLibraryIcon from './assets/Libraryy1.png';
+import navProfileIcon from './assets/Profilee1.png';
+
+// Home / category header chrome
+//import searchIcon2    from './assets/search2.png';
+import searchIcon3    from './assets/Search3.png';
 
 // Achievements artwork
 import trophyHero from './assets/Vystoria_Trophy_Transparent 1.png';
@@ -107,7 +130,7 @@ import artCommunityVoice from './assets/06_Community_Voice_Transparent 1.png';
 
 
 // Home screen chrome
-import homeLogo from './assets/Logo1.png';
+//import homeLogo from './assets/Logo1.png';
 //import searchIcon from './assets/search1.png';
 import choiceBranchIcon from './assets/Choice Branch Icon.svg';
 //import bookmarkButton from './assets/Bookmark Button.png';
@@ -128,8 +151,8 @@ import { FcGoogle } from "react-icons/fc";
 import { Search, ChevronDown } from 'lucide-react';
 
 const ICONS = {
-  back: backIcon,
-  logo: homeLogo,
+  back: backArrowIcon,
+  logo: logoUrl,
   choiceBranch: choiceBranchIcon,
   emptyLibrary: empLib,
   support: supp,
@@ -138,18 +161,26 @@ const ICONS = {
   help: helpIcon,
   logout: logoutIcon,
   deleteAccount: deleteIcon,
+  search: searchIcon3,
+  //search: searchIcon2,
   //navHome: navHomeIcon,
   //navAchievements: navTrophyIcon,
-  navLibrary: navLibraryIcon,
+  //navLibrary: navLibraryIcon,
   //navProfile: navProfileIcon,
+
+  // Flat values now, not { off, on } pairs — see the import comment.
+  navHome:         navHomeIcon,
+  navAchievements: navTrophyIcon,
+  navLibrary:      navLibraryIcon,
+  navProfile:      navProfileIcon,
+  
+  //navHome:         { off: navHomeIcon,     on: navHomeIconActive },
+  //navAchievements: { off: navTrophyIcon,   on: navTrophyIconActive },
+  //navLibrary:      { off: navLibraryIcon,  on: navLibraryIconActive },
+  //navProfile:      { off: navProfileIcon,  on: navProfileIconActive },
   //search: searchIcon,
   //bookmark: bookmarkButton,
 
-  // Nav tabs: { off, on } pairs consumed by NavBtn.
-  //navHome:         { off: homeOff,    on: homeOn },
-  //navAchievements: { off: trophyOff,  on: trophyOn },
-  //navLibrary:      { off: libraryOff, on: libraryOn },
-  //navProfile:      { off: profileOff, on: profileOn },
 };
 
 const MOCK_GAMES = [
@@ -1083,7 +1114,7 @@ export default function App() {
 
         <p
           className="font-manrope text-[#B9B4C9] mt-4 leading-[1.45]"
-          style={{ fontSize: 'clamp(0.9rem, 3.9vw, 1.05rem)' }}
+          style={{ fontSize: 'clamp(1rem, 4vw, 1.1rem)' }}
         >
           Interactive stories where every choice<br className="hidden xs:inline" /> creates a new adventure.
         </p>
@@ -1091,8 +1122,9 @@ export default function App() {
         <button
           onClick={() => { setAuthError(null); setAuthMessage(null); setCurrentView('auth'); }}
           className="w-full mt-8 min-h-[56px] flex items-center justify-center rounded-2xl
-                     bg-gradient-to-r from-[#7C3AED] to-[#9457EB]
+                     bg-gradient-to-r from-[#8A35FF] to-[#6B2DE2]
                      active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
+                     border border-[1px] focus:border-[#C48DFF]
                      shadow-lg shadow-purple-900/40 transition-all
                      font-manrope font-semibold text-white tracking-wide"
           style={{ fontSize: 'clamp(1rem, 4.2vw, 1.15rem)' }}
@@ -1139,7 +1171,7 @@ const renderAuthEmail = () => (
 
       <p
         className="font-manrope text-[#C2BBD4] mt-3 leading-[1.45]"
-        style={{ fontSize: 'clamp(0.875rem, 3.8vw, 1rem)' }}
+        style={{ fontSize: 'clamp(1.1rem, 4vw, 1.1rem)' }}
       >
         Enter email id to log in or create a new account.
       </p>
@@ -1156,7 +1188,7 @@ const renderAuthEmail = () => (
           src={mailIcon}
           alt=""
           aria-hidden="true"
-          className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 pointer-events-none"
+          className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 pointer-events-none"
         />
         <input
           type="email"
@@ -1185,8 +1217,9 @@ const renderAuthEmail = () => (
         onClick={handleAuthContinue}
         disabled={authLoading}
         className="w-full mt-5 min-h-[52px] flex items-center justify-center rounded-xl
-                   bg-gradient-to-r from-[#7C3AED] to-[#9457EB]
+                   bg-gradient-to-r from-[#8A35FF] to-[#6B2DE2]
                    active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
+                   border border-[1px] focus:border-[#C48DFF]
                    shadow-lg shadow-purple-900/40 transition-all
                    disabled:opacity-50 disabled:cursor-not-allowed
                    font-manrope font-semibold text-white tracking-wide"
@@ -1266,7 +1299,8 @@ const renderAuthEmail = () => (
       }}
     >
       <BackButton
-        className="mb-4 mt-0 border-0 bg-transparent size-[20px]"
+        bare
+        className="mb-4"
         onClick={() => { setCurrentView('auth'); setAuthError(null); setAuthMessage(null); setAuthOtp(''); }}
       />
 
@@ -1282,7 +1316,7 @@ const renderAuthEmail = () => (
           
           <p
             className="font-manrope text-[#C2BBD4] mb-4 leading-[1.45]"
-            style={{ fontSize: 'clamp(0.875rem, 3.8vw, 1rem)' }}
+            style={{ fontSize: 'clamp(1rem, 3.8vw, 1rem)' }}
           >
             A verification code has been sent to your email address. Please check your inbox.
           </p>
@@ -1454,24 +1488,21 @@ const renderAuthEmail = () => (
             {/* Top bar — back left, search right, mirroring the Home header
                 so the two screens feel like the same surface. */}
             <div className="flex items-center justify-between mb-5">
-              <button
-                onClick={() => setActiveCategory(null)}
-                aria-label="Back"
-                className="w-11 h-11 flex-shrink-0 rounded-full flex items-center justify-center
-                           bg-[#1A0F33]/70 backdrop-blur-md border border-[#9457EB]/50
-                           hover:border-[#9457EB] active:scale-90 transition-all"
-              >
-                <Undo2 className="w-5 h-5 text-[#A855F7]" strokeWidth={2.25} />
-              </button>
+              <BackButton onClick={() => setActiveCategory(null)} />
 
               <button
                 onClick={() => { setActiveCategory(null); setCurrentTab('search'); }}
                 aria-label="Search"
                 className="w-11 h-11 flex-shrink-0 rounded-full flex items-center justify-center
-                           bg-[#2A1B4D]/70 backdrop-blur-md border border-[#9457EB]/40
-                           hover:border-[#9457EB] active:scale-90 transition-all"
+                           bg-[#000228] border border-[#9457EB]
+                           active:scale-90 transition-transform"
               >
-                <SearchIcon className="w-[18px] h-[18px] text-white" strokeWidth={2.5} />
+                <img
+                  src={ICONS.search}
+                  alt=""
+                  aria-hidden="true"
+                  className="w-[18px] h-[18px] object-contain"
+                />
               </button>
             </div>
 
@@ -1611,10 +1642,15 @@ const renderAuthEmail = () => (
               onClick={() => setCurrentTab('search')}
               aria-label="Search"
               className="w-11 h-11 flex-shrink-0 rounded-full flex items-center justify-center
-                         bg-[#2A1B4D]/70 backdrop-blur-md border border-[#9457EB]/40
-                         hover:border-[#9457EB] active:scale-90 transition-all"
+                         bg-[#000228] border border-[#9457EB]
+                         active:scale-90 transition-transform"
             >
-              <SearchIcon className="w-[18px] h-[18px] text-white" strokeWidth={2.5} />
+              <img
+                src={ICONS.search}
+                alt=""
+                aria-hidden="true"
+                className="w-[18px] h-[18px] object-contain"
+              />
             </button>
           </div>
 
@@ -1626,18 +1662,19 @@ const renderAuthEmail = () => (
               (a screenshot, say) made the title unreadable. */}
           <div
             onClick={() => openGame(featuredGame)}
-            className="relative flex flex-col rounded-[1.5rem] overflow-hidden cursor-pointer
+            className="relative aspect-square flex flex-col rounded-[1.5rem] overflow-hidden cursor-pointer
                        border border-[#322253] bg-gradient-to-b from-[#10082F] to-[#0A082B] shadow-2xl shadow-black/60 mb-7"
           >
-            {/* Cover art */}
-            <div className="relative w-full aspect-[4/3] flex-shrink-0 overflow-hidden">
+            {/* Cover art — takes whatever height the panel leaves, keeping the
+                card itself an exact 1:1 the way the Figma frame is. */}
+            <div className="relative w-full flex-1 min-h-0 overflow-hidden">
               <img
                 src={featuredGame.coverImage}
                 alt={featuredGame.title}
                 className="absolute inset-0 w-full h-full object-cover"
               />
               {/* Fade into the panel so the seam isn't a hard line */}
-              <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#15111F] to-transparent pointer-events-none" />
+              <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#10082F] to-transparent pointer-events-none" />
 
               <span
                 className="absolute top-3.5 left-3.5 z-10 px-3 py-1 rounded-full
@@ -1649,8 +1686,9 @@ const renderAuthEmail = () => (
               </span>
             </div>
 
-            {/* Info panel */}
-            <div className="px-4 pt-1 pb-4">
+            {/* Info panel — flex-shrink-0 so it never gets squeezed; the art
+                absorbs the difference instead. */}
+            <div className="flex-shrink-0 px-4 pt-1 pb-4">
               <h2
                 className="font-fraunces font-bold text-white leading-[1.1] tracking-[-0.01em] line-clamp-2"
                 style={{ fontSize: 'clamp(1.4rem, 6.2vw, 1.85rem)' }}
@@ -1705,6 +1743,7 @@ const renderAuthEmail = () => (
           </div>
 
           {/* ---------- CONTINUE YOUR STORY ---------- */}
+          {/* ---------- CONTINUE YOUR STORY ---------- */}
           {continueList.length > 0 && (
             <div className="mb-7">
               <SectionHeader title="Continue your story" onViewAll={() => setCurrentTab('library')} />
@@ -1716,11 +1755,13 @@ const renderAuthEmail = () => (
                     <div
                       key={game.id}
                       onClick={() => openGame(game)}
-                      className="flex items-center gap-3 p-2.5 rounded-2xl cursor-pointer group
+                      className="flex items-center gap-3 p-2 rounded-[1.25rem] cursor-pointer group
                                  bg-gradient-to-b from-[#10082F] to-[#0A082B] backdrop-blur-md border border-[#322253]
                                  shadow-lg shadow-black/40 active:scale-[0.99] transition-transform"
                     >
-                      <div className="w-[22vw] max-w-[92px] aspect-square flex-shrink-0 rounded-xl overflow-hidden">
+                      {/* Landscape thumb — this is what sets the row height.
+                          Square art here is what made the card look tall. */}
+                      <div className="w-[38vw] max-w-[140px] aspect-[16/9] flex-shrink-0 rounded-xl overflow-hidden">
                         <img
                           src={game.coverImage}
                           alt={game.title}
@@ -1736,7 +1777,7 @@ const renderAuthEmail = () => (
                           {game.title}
                         </h4>
 
-                        <div className="w-full h-[4px] rounded-full bg-[#25134D] overflow-hidden mt-2.5">
+                        <div className="w-full h-[4px] rounded-full bg-[#25134D] overflow-hidden mt-2">
                           <div
                             className="h-full rounded-full bg-gradient-to-r from-[#A855F7] to-[#7C3AED] transition-all"
                             style={{ width: `${progress}%` }}
@@ -1882,8 +1923,30 @@ const renderAuthEmail = () => (
           <div className="flex items-center gap-3 mb-8">
             <BackButton onClick={() => setCurrentTab('home')} />
             <div className="flex-1 bg-[#0B0B14]/80 backdrop-blur-md rounded-full px-5 py-3.5 flex items-center border border-[#9457EB] shadow-inner">
-              <input type="text" placeholder="" className="bg-transparent text-white w-full focus:outline-none text-sm font-medium tracking-wide placeholder:text-[#8A7DAB]" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} autoFocus />
-              <SearchIcon className="text-[#8B5CF6] w-5 h-5 ml-2 flex-shrink-0" />
+              <input
+                type="text"
+                placeholder="Search novels"
+                className="bg-transparent text-white w-full focus:outline-none text-sm font-medium tracking-wide placeholder:text-[#8A7DAB]"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+              />
+              {/* Painted as a mask so the glyph picks up the pill's purple from
+                  CSS instead of whatever colour is baked into the PNG. */}
+              <span
+                aria-hidden="true"
+                className="block w-5 h-5 ml-2 flex-shrink-0 bg-[#FFFFFF]"
+                style={{
+                  WebkitMaskImage: `url(${ICONS.search})`,
+                  maskImage: `url(${ICONS.search})`,
+                  WebkitMaskRepeat: 'no-repeat',
+                  maskRepeat: 'no-repeat',
+                  WebkitMaskPosition: 'center',
+                  maskPosition: 'center',
+                  WebkitMaskSize: 'contain',
+                  maskSize: 'contain',
+                }}
+              />
             </div>
           </div>
 
@@ -1908,7 +1971,7 @@ const renderAuthEmail = () => (
                   src={ICONS.noSearch}
                   alt=""
                   aria-hidden="true"
-                  className="w-[min(46vw,190px)] h-[min(46vw,190px)] object-contain mb-6"
+                  className="w-[min(50vw,210px)] h-[min(50vw,210px)] object-contain mb-6"
                 />
 
                 <h2
@@ -2000,8 +2063,8 @@ const renderAuthEmail = () => (
               Your Library is Empty
             </h2>
             <p
-                  className="font-manrope text-[#C2BBD4] mt-1.5 leading-[1.4]"
-                  style={{ fontSize: 'clamp(0.8rem, 3.5vw, 0.95rem)' }}
+                  className="font-manrope text-[#BCBCBC] mt-0.5 leading-[1]"
+                  style={{ fontSize: 'clamp(1rem, 3.5vw, 1rem)' }}
                 >
                   Bookmark stories you love to find them here
                 </p>
@@ -2009,10 +2072,11 @@ const renderAuthEmail = () => (
             <br/>    
             <button
               onClick={() => setCurrentTab('home')}
-              className="w-full max-w-[280px] min-h-[56px] flex items-center justify-center rounded-2xl
-                         bg-gradient-to-r from-[#7C3AED] to-[#9457EB]
+              className="w-full max-w-[280px] min-h-[56px] flex items-center justify-center rounded-lg
+                         bg-gradient-to-r from-[#8A35FF] to-[#6B2DE2]
                          active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
                          shadow-lg shadow-purple-900/40 transition-all
+                         
                          font-manrope font-semibold text-white tracking-wide"
               style={{ fontSize: 'clamp(1rem, 4.2vw, 1.15rem)' }}
             >
@@ -2372,25 +2436,19 @@ const renderAuthEmail = () => (
     const percent = total > 0 ? Math.round((unlockedCount / total) * 100) : 0;
 
     return (
-      <div className="flex-1 min-h-0 flex flex-col relative bg-[#1A0F33] text-white overflow-hidden font-manrope">
+      <div className="flex-1 min-h-0 flex flex-col relative bg-[#0A062A] text-white overflow-hidden font-manrope">
 
-        <div className="absolute inset-0 z-0">
-          <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/80 via-[#0B0B14]/60 to-[#0B0B14]/85" />
-
-          {/* Achievements-only purple bloom. Sits ABOVE the scrim so the scrim
-              doesn't mute it — layered under it, the 32% alpha all but vanishes.
-              Inline style, not Tailwind: arbitrary values can't contain the
-              commas a radial-gradient needs. */}
-          <div
-            className="absolute inset-0"
-            aria-hidden="true"
-            style={{
-              background:
-                'radial-gradient(circle at 50% 22%, rgba(52, 32, 111, 0.32) 0%, rgba(10, 6, 42, 0) 70%)',
-            }}
-          />
-        </div>
+        {/* No artwork on this screen — a single purple bloom over the flat base.
+            Inline style, not Tailwind: arbitrary values can't contain the
+            commas a radial-gradient needs. */}
+        <div
+          className="absolute inset-0 z-0"
+          aria-hidden="true"
+          style={{
+            background:
+              'radial-gradient(circle at 50% 22%, #34206F52 0%, #0A062A00 70%)',
+          }}
+        />
 
         <div
           className="relative z-10 flex-1 min-h-0 overflow-y-auto no-scrollbar"
@@ -2403,20 +2461,15 @@ const renderAuthEmail = () => (
         >
 
           {/* Back — same circular treatment as the Home category drill-down */}
-          <button
+          <BackButton
+            className="mb-4"
             onClick={() => setActiveAchievementCategory(null)}
-            aria-label="Back"
-            className="w-11 h-11 flex-shrink-0 rounded-full flex items-center justify-center mb-4
-                       bg-[#1A0F33]/70 backdrop-blur-md border border-[#9457EB]/50
-                       hover:border-[#9457EB] active:scale-90 transition-all"
-          >
-            <Undo2 className="w-5 h-5 text-[#A855F7]" strokeWidth={2.25} />
-          </button>
+          />
 
-          {/* Title — Fraunces, matching the genre drill-down */}
+          {/* Title — Fraunces regular, matching the genre drill-down */}
           <h1
-            className="font-fraunces font-bold text-white leading-[1.05] tracking-[-0.01em] mb-5"
-            style={{ fontSize: 'clamp(1.9rem, 8.4vw, 2.6rem)' }}
+            className="font-fraunces font-normal text-white leading-[1.05] tracking-[-0.01em] mb-5"
+            style={{ fontSize: 'clamp(1.65rem, 7vw, 2.25rem)' }}
           >
             {cat.title}
           </h1>
@@ -2479,7 +2532,7 @@ const renderAuthEmail = () => (
                 const art      = ACHIEVEMENT_ART[a.id] || cat.icon;
 
                 return (
-                                    <div
+                  <div
                     key={a.id}
                     className={`flex flex-col rounded-2xl p-3
                                 bg-gradient-to-b from-[#10082F] to-[#0A082B]
@@ -2516,57 +2569,65 @@ const renderAuthEmail = () => (
                       )}
                     </div>
 
-                    {/* Artwork + description. Fixed px, NOT vw — this card sits
-                        inside max-w-[420px], so vw units scale with the browser
-                        window while the card width stays put. That mismatch is
-                        what was crushing the title column on desktop. */}
-                    <div className="flex items-center gap-2.5">
+                    {/* Two columns: artwork on the left, and a right column that
+                        owns the description AND the footer. The footer used to be
+                        a full-width sibling, which ran the progress bar underneath
+                        the art; here it stays inside the text column and lines up
+                        with the description's left edge.
+                        Fixed px, NOT vw — this card sits inside max-w-[420px], so
+                        vw units scale with the browser window while the card width
+                        stays put. */}
+                    <div className="flex-1 flex items-stretch gap-2.5">
                       <img
                         src={art}
                         alt=""
                         aria-hidden="true"
-                        className={`w-[44px] flex-shrink-0 object-contain transition-all
+                        className={`w-[56px] flex-shrink-0 self-start object-contain transition-all
                                     ${a.unlocked
                                       ? 'drop-shadow-[0_0_12px_rgba(155,77,255,0.45)]'
                                       : 'opacity-55'}`}
                       />
-                      <p
-                        className="flex-1 min-w-0 font-manrope text-[#C2BBD4] leading-[1.35] break-words"
-                        style={{ fontSize: '0.66rem' }}
-                      >
-                        {a.description}
-                      </p>
-                    </div>
 
-                    {/* Footer. mt-auto pins it to the bottom so both cards in a
-                        row line up even when one has a taller description. */}
-                    <div className="mt-auto pt-3">
-                      {a.unlocked ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-[6px] h-[6px] rounded-full bg-[#9B4DFF] flex-shrink-0" />
-                          <span
-                            className="font-manrope font-medium text-[#9B4DFF]"
-                            style={{ fontSize: '0.66rem' }}
-                          >
-                            Unlocked
-                          </span>
+                      <div className="flex-1 min-w-0 flex flex-col">
+                        <p
+                          className="font-manrope text-[#C2BBD4] leading-[1.35] break-words"
+                          style={{ fontSize: '0.66rem' }}
+                        >
+                          {a.description}
+                        </p>
+
+                        {/* mt-auto pins the footer to the bottom of the text
+                            column so both cards in a row line up even when one
+                            description wraps to an extra line. */}
+                        <div className="mt-auto pt-2.5">
+                          {a.unlocked ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-[6px] h-[6px] rounded-full bg-[#9B4DFF] flex-shrink-0" />
+                              <span
+                                className="font-manrope font-medium text-[#9B4DFF]"
+                                style={{ fontSize: '0.66rem' }}
+                              >
+                                Unlocked
+                              </span>
+                            </div>
+                          ) : (
+                            <>
+                              <p
+                                className="font-manrope text-[#C2BBD4] mb-1.5"
+                                style={{ fontSize: '0.66rem' }}
+                              >
+                                {value}/{a.threshold}
+                              </p>
+                              <div className="w-full h-[5px] rounded-full bg-[#25134D] overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-gradient-to-r from-[#7845FF] to-[#9B4DFF] transition-all"
+                                  style={{ width: `${barWidth}%` }}
+                                />
+                              </div>
+                            </>
+                          )}
                         </div>
-                      ) : (
-                        <>
-                          <p
-                            className="font-manrope text-[#C2BBD4] mb-1.5"
-                            style={{ fontSize: '0.66rem' }}
-                          >
-                            {value}/{a.threshold}
-                          </p>
-                          <div className="w-full h-[5px] rounded-full bg-[#25134D] overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-[#7845FF] to-[#9B4DFF] transition-all"
-                              style={{ width: `${barWidth}%` }}
-                            />
-                          </div>
-                        </>
-                      )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -2629,8 +2690,13 @@ const renderAuthEmail = () => (
         >
 
           {/* ---------- IDENTITY CARD ---------- */}
-          <div className="rounded-2xl border border-[#9457EB]/35 bg-[#15111F]/85 backdrop-blur-md
-                          shadow-lg shadow-black/40 p-4 mb-5">
+          <div
+            className="rounded-2xl border border-[#603090] backdrop-blur-md
+                        shadow-lg shadow-black/40 p-4 mb-5"
+            style={{
+              background: 'linear-gradient(180deg, #10092DD1 82%, #070520E5 90%, #0B072BDB 88%)',
+            }}
+          >
             <div className="flex items-center gap-4">
 
               {/* Avatar + camera affordance */}
@@ -2687,12 +2753,17 @@ const renderAuthEmail = () => (
             </div>
           </div>
 
-          <br/>
+          
 
           {/* ---------- ACTIONS ---------- */}
           {/* ---------- ACTIONS ---------- */}
-          <div className="rounded-2xl border border-[#9457EB]/35 bg-[#15111F]/85 backdrop-blur-md
-                          shadow-lg shadow-black/40 overflow-hidden">
+          <div
+            className="rounded-2xl border border-[#603090] backdrop-blur-md
+                        shadow-lg shadow-black/40 overflow-hidden"
+            style={{
+              background: 'linear-gradient(180deg, #10092DD1 82%, #070520E5 90%, #0B072BDB 88%)',
+            }}
+          >
             <ActionRow
               icon={<img src={ICONS.help} alt="" aria-hidden="true" className="w-[22px] h-[22px] object-contain" />}
               label="Help & Support"
@@ -2794,15 +2865,7 @@ const renderAuthEmail = () => (
           paddingRight:  'calc(env(safe-area-inset-right, 0px) + 1.5rem)',
         }}
       >
-        <button
-          onClick={() => setCurrentView('main')}
-          aria-label="Back"
-          className="w-11 h-11 flex-shrink-0 rounded-full flex items-center justify-center
-                     bg-[#1A0F33]/70 backdrop-blur-md border border-[#9457EB]/50
-                     hover:border-[#9457EB] active:scale-90 transition-all"
-        >
-          <Undo2 className="w-5 h-5 text-[#A855F7]" strokeWidth={2.25} />
-        </button>
+        <BackButton onClick={() => setCurrentView('main')} />
 
         {/* Content sits in the upper third, not centred in the viewport */}
         <div className="flex flex-col items-center text-center mt-[clamp(4rem,14vh,7rem)]">
@@ -2876,92 +2939,145 @@ const renderAuthEmail = () => (
     const buttonLabel = isComplete ? 'Re-Play' : hasStarted ? 'Continue' : 'Play';
 
     return (
-      <div className="flex flex-col h-full bg-[#0B0B14] text-white overflow-y-auto relative items-center font-spartan">
-        {/* Header matched to screenshot */}
-        <div className="w-full flex justify-between items-center px-5 pb-4 pt-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))] border-b border-[#1C1635]">
-          <button 
-            onClick={() => setCurrentView('main')} 
-            className="w-10 h-10 bg-transparent border border-[#2D1B4E] rounded-full flex items-center justify-center hover:bg-[#1C1635] transition"
-          >
-             {/* Fallback to Undo2 if the custom back icon isn't hooked up yet */}
-             <Undo2 className="text-[#A78BFA] w-5 h-5" />
-          </button>
-          
-          <button 
-            onClick={() => toggleBookmark(selectedGame.id)}
-            className="w-10 h-10 bg-transparent border border-[#2D1B4E] rounded-full flex items-center justify-center hover:bg-[#1C1635] transition"
-          >
-            <Bookmark className={`w-5 h-5 ${isBookmarked ? 'text-[#A78BFA] fill-[#A78BFA]' : 'text-gray-400'}`} />
-          </button>
+      <div className="flex-1 min-h-0 flex flex-col relative bg-[#0B0B14] text-white overflow-hidden font-manrope">
+
+        {/* Artwork — same treatment as Home and Library so the detail screen
+            doesn't read as a flat black sheet next to them.
+            absolute, NOT fixed: the phone frame is max-w-[420px], so a fixed
+            layer paints against the browser viewport and bleeds outside the
+            frame on desktop. */}
+        <div className="absolute inset-0 z-0">
+          <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0B0B14]/85 via-[#0B0B14]/70 to-[#0B0B14]/90" />
         </div>
 
-        <div className="w-full px-5 pt-5 pb-10 flex flex-col">
-          {/* Cover Image matched to screenshot */}
-          <div className="w-full aspect-[4/3] relative rounded-2xl overflow-hidden shadow-2xl border border-[#1C1635]">
-            <img src={selectedGame.coverImage} alt={selectedGame.title} className="w-full h-full object-cover" />
+        {/* Scroller: sits on top of the artwork, has no background of its own.
+            The root no longer scrolls, so the artwork stays put while this moves. */}
+        <div className="relative z-10 flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col items-center">
+
+          {/* Header. No bottom rule — the reference runs the background straight
+              through, and the divider was cutting the screen in half. */}
+          <div className="w-full flex justify-between items-center px-5 pb-3 pt-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))]">
+            <BackButton onClick={() => setCurrentView('main')} />
+
+            {/* Bare glyph, no ring — the reference has no circle on this one. */}
+            <button
+              onClick={() => toggleBookmark(selectedGame.id)}
+              aria-label={isBookmarked ? 'Remove from library' : 'Add to library'}
+              className="w-10 h-10 flex items-center justify-center active:scale-90 transition-transform"
+            >
+              <Bookmark
+                className={`w-[26px] h-[26px] ${isBookmarked ? 'text-[#A78BFA] fill-[#A78BFA]' : 'text-white'}`}
+                strokeWidth={1.75}
+              />
+            </button>
           </div>
 
-          {/* Title Row — title left, thumbs up/down right, matched to new screenshot */}
-          <div className="flex justify-between items-center mt-5 gap-3">
-            <h1 className="text-[clamp(18px,5.7vw,24px)] font-markazi font-bold tracking-wide truncate min-w-0">{selectedGame.title}</h1>
-            <div className="flex gap-2.5 flex-shrink-0">
-              <button
-                onClick={() => handleReaction(selectedGame.id, 'like')}
-                className={`w-9 h-9 rounded-full flex items-center justify-center border transition ${reaction === 'like' ? 'bg-[#2D1B4E] border-[#8B5CF6] text-white' : 'bg-transparent border-[#2D1B4E] text-[#8A7DAB] hover:border-[#4D3A7A]'}`}
-              >
-                <ThumbsUp className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => handleReaction(selectedGame.id, 'dislike')}
-                className={`w-9 h-9 rounded-full flex items-center justify-center border transition ${reaction === 'dislike' ? 'bg-[#2D1B4E] border-[#8B5CF6] text-white' : 'bg-transparent border-[#2D1B4E] text-[#8A7DAB] hover:border-[#4D3A7A]'}`}
-              >
-                <ThumbsDown className="w-4 h-4 mt-1" />
-              </button>
-            </div>
-          </div>
-
-          {/* Genre and Liked Status — same row, matched to new screenshot */}
-          <div className="flex justify-between items-center mt-3">
-             <div className="bg-[#2D1B4E] border border-[#3B0764] px-5 py-1.5 rounded-full">
-                <span className="text-white font-markazi font-bold text-[13px] tracking-widest uppercase">{selectedGame.genre}</span>
-             </div>
-             
-             {likedPercent !== null ? (
-                <div className="text-[15px]">
-                   <span className="font-bold text-white">{likedPercent}% </span>
-                   <span className="text-gray-300 font-markazi font-semibold">Liked it</span>
-                </div>
-             ) : (
-                <span className="text-[15px] font-markazi font-semibold text-white">Be the first critic</span>
-             )}
-          </div>
-
-          {/* Progress Bar matched to screenshot */}
-          {hasStarted && (
-            <div className="w-full h-9 bg-[#1C1635] border border-[#2D1B4E] rounded-lg overflow-hidden mt-5 relative flex items-center justify-center shadow-inner">
-               <div className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-[#A855F7] to-[#8B5CF6] transition-all" style={{width: `${progressPercent}%`}}></div>
-               <span className="relative z-10 text-[13px] font-markazi font-bold text-white drop-shadow-md tracking-wide">{progressPercent}% Explored</span>
-            </div>
-          )}
-
-          {/* Action Button matched to screenshot */}
-          <button
-            onClick={() => {
-              if (selectedGame?.isCloud) handleCloudPlay();
-              else alert("This is a placeholder! Please launch stories dynamically sync'd from your personal library.");
-            }}
-            className="w-full min-h-[56px] bg-[#7C3AED] hover:bg-[#8B5CF6] active:scale-[0.98] text-white font-markazi font-bold py-4 rounded-[14px] shadow-[0_0_20px_rgba(124,58,237,0.4)] text-[clamp(22px,7.1vw,30px)] leading-none transition-all tracking-wide mt-5"
+          <div
+            className="w-full px-5 pt-2 flex flex-col"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2.5rem)' }}
           >
-            {buttonLabel}
-          </button>
+            {/* Cover. The reference is close to square (~8:7), not 4:3 — at 4:3
+                the art was reading as a letterboxed banner. */}
+            <div className="w-full aspect-[8/7] relative rounded-2xl overflow-hidden shadow-2xl border border-[#1C1635]">
+              <img src={selectedGame.coverImage} alt={selectedGame.title} className="w-full h-full object-cover" />
+            </div>
 
-          {/* Synopsis Box matched to screenshot */}
-          <div className="bg-[#120F24] rounded-[14px] p-5 mt-5 border border-[#1C1635] shadow-lg">
-            <p className="text-[13px] text-gray-300 leading-[1.8] font-medium opacity-90">
-              The forest slept beneath a thin veil of moonlight, every tree standing like a silent witness. Even the wind seemed afraid to move. The young slayer advanced carefully, boots brushing fallen leaves, his breath slow and measured. Somewhere ahead, a child whimpered—soft, trembling—then fell abruptly quiet. That silence was worse than any scream. He knew the demon was close.
-              <br/><br/>
-              A sudden blur tore through the darkness. Claws grazed his side, warm blood soaking into his uniform, but he didn't cry out. Pain was expected. Fear was not. He steadied himself, recalling his training: listen to the forest, feel the rhythm, wait for the opening. The demon laughed from the—
-            </p>
+            {/* Title row — Fraunces, matching every other display heading. */}
+            <div className="flex justify-between items-center mt-4 gap-3">
+              <h1
+                className="font-fraunces text-white tracking-[-0.01em] truncate min-w-0"
+                style={{ fontSize: 'clamp(20px, 6.4vw, 28px)' }}
+              >
+                {selectedGame.title}
+              </h1>
+
+              <div className="flex gap-2.5 flex-shrink-0">
+                <button
+                  onClick={() => handleReaction(selectedGame.id, 'like')}
+                  aria-label="Like"
+                  className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all active:scale-90
+                              ${reaction === 'like'
+                                ? 'bg-[#7C3AED] border-[#A855F7] text-white'
+                                : 'bg-[#2D1B4E]/60 border-[#4D3A7A] text-[#C4B5FD] hover:border-[#9457EB]'}`}
+                >
+                  <ThumbsUp className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => handleReaction(selectedGame.id, 'dislike')}
+                  aria-label="Dislike"
+                  className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all active:scale-90
+                              ${reaction === 'dislike'
+                                ? 'bg-[#7C3AED] border-[#A855F7] text-white'
+                                : 'bg-[#2D1B4E]/60 border-[#4D3A7A] text-[#C4B5FD] hover:border-[#9457EB]'}`}
+                >
+                  <ThumbsDown className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Genre + liked share. The pill is gone — the reference sets the
+                genre as plain accent text, the same as the Home featured card. */}
+            <div className="flex justify-between items-baseline mt-1.5 gap-3">
+              <span
+                className="font-manrope font-semibold text-[#A855F7] truncate min-w-0"
+                style={{ fontSize: 'clamp(0.78rem, 3.4vw, 0.9rem)' }}
+              >
+                {selectedGame.genre}
+              </span>
+
+              {likedPercent !== null ? (
+                <span className="flex-shrink-0 whitespace-nowrap">
+                  <span className="font-manrope font-bold text-white" style={{ fontSize: 'clamp(15px, 4.8vw, 19px)' }}>
+                    {likedPercent}%
+                  </span>
+                  <span className="font-manrope text-[#FFFFFF] ml-1.5" style={{ fontSize: 'clamp(13px, 3.7vw, 15px)' }}>
+                    Liked it
+                  </span>
+                </span>
+              ) : (
+                <span className="font-manrope text-[#FFFFFF] flex-shrink-0" style={{ fontSize: 'clamp(13px, 3.7vw, 15px)' }}>
+                  Be the first critic
+                </span>
+              )}
+            </div>
+
+            {/* Progress. Reference bar is ~26px, not 36 — at h-9 it was reading
+                as a second button stacked above the real one. */}
+            {hasStarted && (
+              <div className="w-full h-[26px] bg-[#13072E] border border-[#C48DFF]/60 rounded-lg overflow-hidden mt-4 relative flex items-center justify-center shadow-inner">
+                <div
+                  className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-[#A855F7] to-[#8B5CF6] transition-all"
+                  style={{ width: `${progressPercent}%` }}
+                />
+                <span className="relative z-10 font-manrope font-bold text-white drop-shadow-md tracking-wide" style={{ fontSize: '12px' }}>
+                  {progressPercent}% Explored
+                </span>
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                if (selectedGame?.isCloud) handleCloudPlay();
+                else alert("This is a placeholder! Please launch stories dynamically sync'd from your personal library.");
+              }}
+              className="w-full min-h-[52px] rounded-[14px] mt-3.5 py-3 leading-none
+                         bg-gradient-to-b from-[#8A35FF] to-[#6B2DE2] hover:from-[#9B6BFF] hover:to-[#8B5CF6]
+                         border border-[#C48DFF]/60 shadow-[0_0_20px_rgba(124,58,237,0.4)]
+                         font-fraunces text-white tracking-wide transition-all active:scale-[0.98]"
+              style={{ fontSize: 'clamp(20px, 6.2vw, 26px)' }}
+            >
+              {buttonLabel}
+            </button>
+
+            {/* Synopsis — now driven by the story record instead of a literal. */}
+            <div className="bg-[#13072E]/90 rounded-[14px] p-4 mt-4 border border-[#C48DFF]/60 shadow-lg">
+              <p className="font-manrope text-[#FFFFFF] leading-[1.6]" style={{ fontSize: '12.5px' }}>
+                {selectedGame.description
+                  || selectedGame.subtitle
+                  || 'No Desc. available for this story yet.'}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -2999,6 +3115,13 @@ const renderAuthEmail = () => (
       "w-full text-white font-bold font-markazi rounded-lg border border-[#8000FF] transition " +
       "py-[clamp(0.3rem,1.5vh,0.9rem)] px-3 text-[clamp(14px,4.2vh,28px)] leading-none";
 
+    // Bigger variant used only on the main menu ("Start New Game" screen),
+    // which has just 3 buttons and plenty of vertical room, so it can afford
+    // larger text/padding than the denser paused/save/load menus.
+    const mainMenuBtn =
+      "w-full text-white font-bold font-markazi rounded-lg border border-[#8000FF] transition " +
+      "py-[clamp(0.5rem,2.4vh,1.25rem)] px-4 text-[clamp(20px,5.8vh,36px)] leading-none";
+
     return (
       <div className="absolute inset-0 z-50 bg-black overflow-hidden font-spartan">
         <div className="w-full h-full relative overflow-hidden bg-[#0B0B14] text-white">
@@ -3024,10 +3147,10 @@ const renderAuthEmail = () => (
                  </h1>
                </div>
 
-               <div className="w-full max-w-[min(70vw,300px)] space-y-[clamp(0.4rem,1.5vh,0.75rem)] flex-shrink-0">
-                 <button onClick={() => { setSequenceIndex(0); setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id); setPlayerState('playing'); }} className={`${menuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Start New Game</button>
-                 <button onClick={() => setPlayerState('load_menu')} className={`${menuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Load Game</button>
-                 <button onClick={() => setCurrentView('game_detail')} className={`${menuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Exit</button>
+               <div className="w-full max-w-[min(78vw,340px)] space-y-[clamp(0.6rem,2.4vh,1.25rem)] flex-shrink-0">
+                 <button onClick={() => { setSequenceIndex(0); setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id); setPlayerState('playing'); }} className={`${mainMenuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Start New Game</button>
+                 <button onClick={() => setPlayerState('load_menu')} className={`${mainMenuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Load Game</button>
+                 <button onClick={() => setCurrentView('game_detail')} className={`${mainMenuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Exit</button>
                </div>
             </div>
           )}
@@ -3180,22 +3303,29 @@ const renderAuthEmail = () => (
                  </div>
                )}
 
-               {(!isEndOfSequence || !(currentScene.choices && currentScene.choices.length > 0)) ? (
+                {(!isEndOfSequence || !(currentScene.choices && currentScene.choices.length > 0)) ? (
                  <div className="mt-auto relative z-40 w-full flex justify-center cursor-pointer
                                  px-[max(0.75rem,env(safe-area-inset-left))]
                                  pb-[max(0.75rem,env(safe-area-inset-bottom))]"
                       onClick={advanceStory}>
                     <div className="relative w-full max-w-3xl">
-                       {/* Speaker badge sits in flow above the box rather than
-                           absolutely offset, so it can't be clipped off the
-                           top of a short viewport. */}
+                       {/* block w-fit, NOT inline-block: an inline-level badge sits
+                           on a text baseline and the line box adds descender space
+                           underneath, which is what was leaving the nameplate
+                           hovering above the box. -mb-[2px] then overlaps the
+                           dialogue box's 2px border so the two read as one tab. */}
                        {currentSequenceBlock.speaker && (
-                         <div className="inline-block max-w-[60%] truncate bg-[#9457EB] text-white font-markazi font-bold px-4 py-1 rounded-t-xl shadow-lg text-[clamp(13px,3.8vh,25px)] tracking-wide">
+                         <div className="block w-fit max-w-[60%] truncate relative z-10 -mb-[2px]
+                                         bg-gradient-to-b from-[#8A35FF] to-[#6B2DE2]
+                                         border-2 border-b-0 border-[#C48DFF]/70
+                                         text-white font-manrope
+                                         px-5 py-[clamp(0.15rem,1vh,0.5rem)] rounded-t-xl shadow-lg
+                                         text-[clamp(15px,4.4vh,26px)] tracking-wide">
                            {currentSequenceBlock.speaker}
                          </div>
                        )}
 
-                       <div className={`bg-[#000228]/60 border-2 border-[#8B5CF6]/70 w-full rounded-xl ${currentSequenceBlock.speaker ? 'rounded-tl-none' : ''} px-5 py-[clamp(0.6rem,2.2vh,1.75rem)] pr-12 text-white font-markazi text-[clamp(13px,4vh,21px)] leading-snug shadow-[0_0_30px_rgba(0,0,0,0.8)] relative break-words max-h-[42vh] overflow-y-auto no-scrollbar`}>
+                       <div className={`bg-[#000228]/80 border-2 border-[#C48DFF]/70 w-full rounded-xl ${currentSequenceBlock.speaker ? 'rounded-tl-none' : ''} px-6 py-[clamp(0.9rem,3.2vh,2rem)] pr-14 text-white font-fraunces text-[clamp(15px,4.6vh,24px)] leading-snug shadow-[0_0_30px_rgba(0,0,0,0.8)] relative break-words min-h-[clamp(64px,20vh,150px)] max-h-[42vh] overflow-y-auto no-scrollbar`}>
                           <span className={currentSequenceBlock.type === 'narrative' ? 'italic text-[#D8B4FE]' : 'text-gray-100'}>
                              {currentSequenceBlock.text || 'The silent dark city envelops you...'}
                           </span>
@@ -3203,7 +3333,7 @@ const renderAuthEmail = () => (
 
                        {/* Moved outside the scrolling box so it stays pinned
                            while long dialogue scrolls underneath. */}
-                       <div className="absolute bottom-2 right-3 bg-white w-[clamp(20px,5vh,28px)] h-[clamp(20px,5vh,28px)] rounded-full flex items-center justify-center shadow-lg pointer-events-none">
+                       <div className="absolute bottom-3 right-4 bg-white w-[clamp(24px,6vh,34px)] h-[clamp(24px,6vh,34px)] rounded-full flex items-center justify-center shadow-lg pointer-events-none">
                          <ArrowRight className="w-[60%] h-[60%] text-[#4C1D95]" strokeWidth={3} />
                        </div>
                     </div>
@@ -3212,19 +3342,27 @@ const renderAuthEmail = () => (
                     <div className="mt-auto relative z-40 w-full flex justify-center
                                     px-[max(0.75rem,env(safe-area-inset-left))]
                                     pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-                      <div className="w-full max-w-3xl bg-[#000228]/60 border-2 border-[#9457EB]/70 rounded-2xl p-[clamp(0.6rem,2vh,1.25rem)] shadow-[0_0_40px_rgba(0,0,0,0.9)] max-h-[70vh] overflow-y-auto no-scrollbar">
-                        <p className="text-white text-[clamp(12px,3.4vh,16px)] font-medium mb-[clamp(0.4rem,1.5vh,1rem)] leading-snug">
+                      <div className="w-full max-w-3xl bg-[#000228]/80 border-2 border-[#C48DFF]/70 rounded-2xl p-[clamp(0.9rem,3vh,1.75rem)] shadow-[0_0_40px_rgba(0,0,0,0.9)] max-h-[76vh] overflow-y-auto no-scrollbar">
+                        <p className="text-white font-fraunces text-[clamp(14px,4.2vh,22px)] mb-[clamp(0.6rem,2.2vh,1.25rem)] leading-snug">
                           {currentScene.choice_prompt || "What do you think would be the best argument?"}
                         </p>
-                        {/* auto-fit means 2+ columns on a wide landscape screen
-                            and a single column when narrow — no breakpoint
-                            guesswork, and long choice text never gets crushed. */}
-                        <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-[clamp(0.35rem,1.2vh,0.75rem)]">
+                        {/* Fixed 2 columns, NOT auto-fit. minmax(180px,1fr) on an
+                            868px landscape viewport resolves to four columns, so
+                            four choices collapsed into one cramped row. The
+                            reference is a 2x2 grid; an odd last choice just sits
+                            in the left column at normal width. */}
+                        <div className="grid grid-cols-2 gap-[clamp(0.5rem,1.8vh,1rem)]">
                           {currentScene.choices.map((choice, idx) => (
                             <button
                               key={idx}
                               onClick={() => handleChoice(choice.next_scene)}
-                              className="bg-[#2D1B4E]/70 hover:bg-[#9457EB] border border-[#9457EB]/60 text-white font-semibold py-[clamp(0.35rem,1.4vh,0.75rem)] px-3 rounded-lg shadow-sm transition-all text-[clamp(11px,3.2vh,14px)] text-center leading-tight break-words active:scale-[0.98]"
+                              className="bg-gradient-to-b from-[#8A35FF]/45 to-[#6B2DE2]/45
+                                         hover:from-[#8A35FF] hover:to-[#6B2DE2]
+                                         border border-[#C48DFF]/60 text-white font-fraunces
+                                         py-[clamp(0.6rem,2.6vh,1.35rem)] px-4 rounded-xl shadow-sm
+                                         transition-all text-[clamp(13px,4vh,20px)] text-center
+                                         leading-tight break-words active:scale-[0.98]
+                                         min-h-[clamp(44px,11vh,86px)] flex items-center justify-center"
                             >
                               {choice.text}
                             </button>
@@ -3296,10 +3434,10 @@ const renderAuthEmail = () => (
               }}
             >
               <div className="flex justify-between items-center">
-                <NavBtn icon={<Home />}            label="Home"         active={currentTab === 'home'}         onClick={() => navigateTo('main', 'home')} />
-                <NavBtn icon={<Trophy />}          label="Achievements" active={currentTab === 'achievements'} onClick={() => navigateTo('main', 'achievements')} />
-                <NavBtn iconSrc={ICONS.navLibrary} label="Library"      active={currentTab === 'library'}      onClick={() => navigateTo('main', 'library')} />
-                <NavBtn icon={<User />}            label="Profile"      active={currentTab === 'profile'}      onClick={() => navigateTo('main', 'profile')} />
+                <NavBtn iconSrc={ICONS.navHome}         label="Home"         active={currentTab === 'home'}         onClick={() => navigateTo('main', 'home')} />
+                <NavBtn iconSrc={ICONS.navAchievements} label="Achievements" active={currentTab === 'achievements'} onClick={() => navigateTo('main', 'achievements')} />
+                <NavBtn iconSrc={ICONS.navLibrary}      label="Library"      active={currentTab === 'library'}      onClick={() => navigateTo('main', 'library')} />
+                <NavBtn iconSrc={ICONS.navProfile}      label="Profile"      active={currentTab === 'profile'}      onClick={() => navigateTo('main', 'profile')} />
               </div>
             </div>
           )}
@@ -3312,20 +3450,29 @@ const renderAuthEmail = () => (
   );
 }
 
-// Reusable back button utilizing your custom SVG if provided, falling back to Lucide.
-const BackButton = ({ onClick, className = '' }) => (
-  <div 
-    onClick={onClick} 
-    className={`w-10 h-10 flex items-center justify-center cursor-pointer hover:bg-[#1C1635] transition flex-shrink-0 ${className}`}
+// Single source for every back affordance in the app. The four screens that
+// hand-rolled their own <button> + Undo2 now call this instead, so the asset
+// and the chrome only have to change in one place.
+// `bare` drops the circle for the auth flow, which sits on artwork and wants
+// just the glyph.
+const BackButton = ({ onClick, bare = false, className = '' }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-label="Back"
+    className={`w-11 h-11 flex-shrink-0 rounded-full flex items-center justify-center
+                active:scale-90 transition-all
+                ${bare
+                  ? 'bg-transparent border-0'
+                  : 'bg-[#000228] border border-[#9457EB] hover:border-[#C48DFF]'}
+                ${className}`}
   >
     {ICONS.back ? (
-      <img src={ICONS.back} alt="Back" className="w-10 h-10 object-contain" />
+      <img src={ICONS.back} alt="" aria-hidden="true" className="w-5 h-5 object-contain" />
     ) : (
-      <div className="w-10 h-10 bg-transparent border border-[#2D1B4E] rounded-full flex items-center justify-center">
-        <Undo2 className="text-[#A78BFA] w-5 h-5" />
-      </div>
+      <Undo2 className="text-[#A855F7] w-5 h-5" strokeWidth={2.25} />
     )}
-  </div>
+  </button>
 );
 
 // Lucide-only. The PNG pairs were shipping their own background plates,
@@ -3347,7 +3494,7 @@ const NavBtn = ({ iconSrc, icon, label, active, onClick }) => (
       {iconSrc ? (
         <span
           aria-hidden="true"
-          className={`block w-6 h-6 transition-colors duration-300
+          className={`block w-8 h-8 transition-colors duration-300
                       ${active
                         ? 'bg-[#A855F7] drop-shadow-[0_0_8px_rgba(168,85,247,0.55)]'
                         : 'bg-[#6B6484] group-hover:bg-[#A855F7]'}`}

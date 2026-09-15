@@ -257,6 +257,35 @@ const REGISTRATION_POLL_DELAY_MS = 400;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// The auth endpoints live on the FastAPI backend, not on Supabase — see the
+// deferred-signup note in server.py. Trailing slash stripped so
+// `${API_BASE_URL}/auth/...` can't produce a double slash.
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const AUTH_REQUEST_TIMEOUT_MS = 25000;
+
+const postJson = async (path, body) => {
+  if (!API_BASE_URL) throw new Error('Sign-in is not configured. Please try again later.');
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AUTH_REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(payload.detail || payload.message || 'Something went wrong. Please try again.');
+    return payload;
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('The server took too long to respond. Please try again.');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 const calculateProgress = (story, sceneId) => {
   if (!story?.scenes?.length || !sceneId) return 0;
   const idx = story.scenes.findIndex(s => s.id === sceneId);
@@ -278,6 +307,20 @@ const countStoryEndings = (story) => {
   }).length;
 };
 
+
+// Completion is an ENDINGS metric. A novel is 100% only when every ending in
+// the file has been reached at least once; one ending out of four is 25%, not
+// "finished". Below that, the deepest scene reached acts as a floor so the bar
+// never jumps backwards mid-run, and 99 is the ceiling until the set is full.
+const computeCompletion = ({ endingsReached = [], totalEndings = 0, scenePercent = 0 }) => {
+  const reached = new Set((endingsReached || []).filter(Boolean)).size;
+  const total   = Number(totalEndings) || 0;
+  if (total > 0 && reached >= total) return 100;
+  const endingsPercent = total > 0 ? Math.floor((reached / total) * 100) : 0;
+  const floorPercent   = Math.max(0, Math.round(scenePercent || 0));
+  return Math.min(99, Math.max(endingsPercent, floorPercent));
+};
+
 export default function App() {
   const [currentView, setCurrentView] = useState('init');
   const [currentTab, setCurrentTab] = useState('home');
@@ -287,6 +330,10 @@ export default function App() {
   const [authEmail, setAuthEmail] = useState('');
   const [authOtp, setAuthOtp] = useState('');
   const [isNewAccount, setIsNewAccount] = useState(false);
+  // Set once, from the /auth/request-otp response, and never touched again.
+  // The verify heading reads THIS, not userMetadata — reading live metadata is
+  // what produced both "Welcome Back Player One" and the name flash on verify.
+  const [returningName, setReturningName] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [authMessage, setAuthMessage] = useState(null);
@@ -347,27 +394,28 @@ export default function App() {
     return () => { ScreenOrientation.unlock().catch(() => {}); };
   }, []);
 
-  // Resends the code without re-running the account-discovery branch in
-  // handleAuthContinue. For a brand-new signup the auth.users row already
-  // exists at this point, so shouldCreateUser must stay true or GoTrue will
-  // reject the resend for an unconfirmed account.
+  // Same endpoint as the first send — there is no account-discovery branch to
+  // re-run any more, because nothing was created on the first send either. The
+  // 60s cooldown is enforced server-side too, so a fast tapper gets a 429
+  // rather than a second live code.
   const handleResendCode = async () => {
     const email = authEmail.trim().toLowerCase();
     if (!email) return setAuthError("Email is required.");
     setAuthLoading(true);
     setAuthError(null);
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: isNewAccount }
-    });
-
-    setAuthLoading(false);
-    if (error) return setAuthError(error.message);
-
-    setResendCountdown(60);
-    setResendSuccess(true);
-    setTimeout(() => setResendSuccess(false), 2500);
+    try {
+      const { is_new_user: isNew, display_name: displayName } = await postJson('/auth/request-otp', { email });
+      setIsNewAccount(!!isNew);
+      setReturningName(isNew ? '' : (displayName || ''));
+      setResendCountdown(60);
+      setResendSuccess(true);
+      setTimeout(() => setResendSuccess(false), 2500);
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   const [userMetadata, setUserMetadata] = useState({
@@ -461,6 +509,10 @@ export default function App() {
   const [storyData, setStoryData] = useState(null);
   const [currentSceneId, setCurrentSceneId] = useState(null);
 
+  // { reached: [sceneId], total: n } for the novel currently open. reached is
+  // loaded from user_progress on open and appended to on every ending.
+  const [storyEndings, setStoryEndings] = useState({ reached: [], total: 0 });
+
   // Every scene the player lands on goes in the buffer, including the one they
   // resume onto. Cheap — a Set add, no network.
   //
@@ -490,19 +542,23 @@ export default function App() {
       if (error) throw error;
       if (!data) return;
 
-      // story_id -> { percent, updatedAt }. updatedAt drives the ordering of
-      // the "Continue your story" rail; without it the rail is arbitrary.
+      // story_id -> { percent, updatedAt, endings... }. updatedAt drives the
+      // ordering of the "Continue your story" rail; without it the rail is
+      // arbitrary. The mere existence of a row is what "started" means now.
       const progressMap = {};
       if (activeUser) {
         const { data: progressRows } = await supabase
           .from('user_progress')
-          .select('story_id, progress_percent, updated_at')
+          .select('story_id, progress_percent, updated_at, endings_reached, total_endings')
           .eq('user_id', activeUser.id);
         if (progressRows) {
           progressRows.forEach(r => {
             progressMap[r.story_id] = {
               percent: r.progress_percent || 0,
               updatedAt: r.updated_at || null,
+              endingsReached: Array.isArray(r.endings_reached) ? r.endings_reached : [],
+              totalEndings: r.total_endings || 0,
+              started: true,
             };
           });
         }
@@ -511,6 +567,15 @@ export default function App() {
       const games = data.map((story, i) => {
         const filename = story.url.substring(story.url.lastIndexOf('/') + 1);
         const prog = progressMap[story.id] || {};
+        const endingsReached = prog.endingsReached || [];
+        const totalEndings   = prog.totalEndings || 0;
+        // Once we know the ending count we re-derive rather than trusting the
+        // stored number, so a row written by the old "any ending = 100" rule
+        // shows the truth immediately. Before we know it, the stored value
+        // stands — guessing downwards would be worse than waiting one open.
+        const progress = totalEndings > 0
+          ? computeCompletion({ endingsReached, totalEndings, scenePercent: prog.percent })
+          : (prog.percent || 0);
         return {
           id: story.id,
           title: story.title,
@@ -526,7 +591,10 @@ export default function App() {
           isFeatured: !!story.is_featured,
           trendingScore: Number(story.trending_score) || 0,
           playCount: story.play_count || 0,
-          progress: prog.percent || 0,
+          progress,
+          endingsReached,
+          totalEndings,
+          hasStarted: !!prog.started,
           lastPlayedAt: prog.updatedAt || null,
           search_count: story.search_count || 0,
           assets: story.assets || {}
@@ -661,6 +729,13 @@ export default function App() {
   };
 
   const handleReaction = async (gameId, type) => {
+    // A novel you have never opened cannot be rated. The buttons are disabled
+    // in renderGameDetail too — this is the guard for stale state (a list
+    // rendered before fetchCloudGames came back, a resumed session, etc).
+    const game = cloudGames.find(g => g.id === gameId)
+      || (selectedGame?.id === gameId ? selectedGame : null);
+    if (!game?.hasStarted && !(game?.progress > 0)) return;
+
     const currentReaction = userMetadata.reactions?.[gameId] || null;
     const nextReaction = currentReaction === type ? null : type;
     const newReactions = { ...(userMetadata.reactions || {}) };
@@ -780,12 +855,31 @@ export default function App() {
         progressData.save_slots.forEach((slot, idx) => { if (idx < 8) parsedSlots[idx] = slot; });
       }
 
+      // The ending COUNT comes from the file (always current, even if the
+      // creator republished with a new branch); the endings REACHED come from
+      // the player's row. Together they are the completion number.
+      const totalEndings   = countStoryEndings(json);
+      const endingsReached = Array.isArray(progressData?.endings_reached) ? progressData.endings_reached : [];
+      const resumeSceneId  = progressData?.current_scene_id || json.starting_scene || json.scenes[0].id;
+      const resumePercent  = calculateProgress(json, resumeSceneId);
+      const syncedPercent  = computeCompletion({ endingsReached, totalEndings, scenePercent: resumePercent });
+
+      setStoryEndings({ reached: endingsReached, total: totalEndings });
       setSaveSlots(parsedSlots);
       setStoryData(json);
-      setCurrentSceneId(progressData?.current_scene_id || json.starting_scene || json.scenes[0].id);
+      setCurrentSceneId(resumeSceneId);
       setSequenceIndex(0);
       setPlayerState('main_menu');
       setCurrentView('engine');
+
+      // Opening the novel is what unlocks the reaction buttons, so flip the
+      // flag locally instead of waiting for the next fetchCloudGames.
+      setCloudGames(prev => prev.map(g => g.id === selectedGame.id
+        ? { ...g, hasStarted: true, progress: syncedPercent, endingsReached, totalEndings }
+        : g));
+      setSelectedGame(prev => prev
+        ? { ...prev, hasStarted: true, progress: syncedPercent, endingsReached, totalEndings }
+        : prev);
 
       if (user && selectedGame.isCloud) {
         // Source of truth for "novels started". Creates a 0% user_progress row
@@ -793,13 +887,27 @@ export default function App() {
         supabase.rpc('mark_story_started', { story_id_input: selectedGame.id })
           .then(({ error: startError }) => {
             if (startError) console.error('mark_story_started failed:', startError);
+
+            // Chained, not parallel: both write the same row, and letting
+            // mark_story_started own the INSERT keeps the achievement trigger
+            // firing exactly where it did before. This call registers
+            // total_endings and re-derives progress_percent, which is also
+            // what repairs rows the old flow left pinned at 100.
+            supabase.rpc('record_ending_progress', {
+              story_id_input: selectedGame.id,
+              ending_scene_id_input: null,
+              total_endings_input: totalEndings,
+              scene_percent_input: resumePercent,
+            }).then(({ error: syncError }) => {
+              if (syncError) console.error('record_ending_progress failed:', syncError);
+            });
           });
 
         // Needed by the "All Roads" badge. Write-once server-side, so the
         // first player to open a story fixes the number for everyone.
         supabase.rpc('report_story_structure', {
           story_id_input: selectedGame.id,
-          ending_count_input: countStoryEndings(json),
+          ending_count_input: totalEndings,
           scene_count_input: json.scenes.length,
         }).then(({ error: structError }) => {
           if (structError) console.error('report_story_structure failed:', structError);
@@ -824,7 +932,13 @@ export default function App() {
       newSlots[idx] = { sceneId: currentSceneId, date: new Date().toLocaleString() };
       setSaveSlots(newSlots);
 
-      const progressPercent = calculateProgress(storyData, currentSceneId);
+      // Saving must not be able to write 100 just because the player parked on
+      // the last scene in the array — completion is endings, not scene index.
+      const progressPercent = computeCompletion({
+        endingsReached: storyEndings.reached,
+        totalEndings: storyEndings.total,
+        scenePercent: calculateProgress(storyData, currentSceneId),
+      });
 
       await supabase.from('user_progress').upsert({
         user_id: user.id, story_id: selectedGame.id, current_scene_id: currentSceneId,
@@ -880,19 +994,51 @@ export default function App() {
     if (!hasChoices) {
       if (user && selectedGame) {
         visitedScenesRef.current.add(currentSceneId);
+
+        // Endings are a SET. Re-reaching one you have already seen must not
+        // move the bar, and reaching one of four must not read as finished —
+        // which is exactly what the old flat `progress: 100` did here.
+        const reached = Array.from(new Set([...(storyEndings.reached || []), currentSceneId]));
+        const total   = storyEndings.total || countStoryEndings(storyData);
+        const percent = computeCompletion({
+          endingsReached: reached,
+          totalEndings: total,
+          scenePercent: calculateProgress(storyData, currentSceneId),
+        });
+
+        setStoryEndings({ reached, total });
+        setCloudGames(prev => prev.map(g => g.id === selectedGame.id
+          ? { ...g, progress: percent, endingsReached: reached, totalEndings: total } : g));
+        setSelectedGame(prev => prev
+          ? { ...prev, progress: percent, endingsReached: reached, totalEndings: total } : prev);
+
         // Flush first: the ending scene itself is part of "fully explored", and
         // the player may exit straight from the end screen without another flush.
         flushSceneVisits().finally(() => {
+          // Unchanged — this is still what the ending/replay badges read.
           supabase.rpc('record_story_ending', {
             story_id_input: selectedGame.id,
             ending_scene_id_input: currentSceneId,
           }).then(({ error }) => {
-            if (error) {
-              console.error('record_story_ending failed:', error);
-              return;
-            }
-            setCloudGames(prev => prev.map(g => g.id === selectedGame.id ? { ...g, progress: 100 } : g));
-            setSelectedGame(prev => prev ? { ...prev, progress: 100 } : prev);
+            if (error) console.error('record_story_ending failed:', error);
+
+            // Runs second on purpose: it re-derives progress_percent, so it is
+            // the last writer and wins over anything the older RPC wrote.
+            supabase.rpc('record_ending_progress', {
+              story_id_input: selectedGame.id,
+              ending_scene_id_input: currentSceneId,
+              total_endings_input: total,
+              scene_percent_input: calculateProgress(storyData, currentSceneId),
+            }).then(({ data, error: progressError }) => {
+              if (progressError) {
+                console.error('record_ending_progress failed:', progressError);
+                return;
+              }
+              const row = Array.isArray(data) ? data[0] : data;
+              const serverPercent = row?.progress_percent ?? percent;
+              setCloudGames(prev => prev.map(g => g.id === selectedGame.id ? { ...g, progress: serverPercent } : g));
+              setSelectedGame(prev => prev ? { ...prev, progress: serverPercent } : prev);
+            });
           });
         });
       }
@@ -936,49 +1082,27 @@ export default function App() {
     }
   };
 
-  // Sends an OTP without ever passing emailRedirectTo. Supplying a redirect
-  // makes GoTrue render a magic link instead of a code for brand-new users,
-  // which is what caused the OTP-vs-link inconsistency. The email templates
-  // use {{ .Token }} only.
-  const sendOtp = async (email, createUser) =>
-    supabase.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: createUser }
-    });
-
+  // Nothing is created here. /auth/request-otp only writes a hashed code to
+  // public.auth_otp_codes, so an address typed into the app and abandoned
+  // leaves no user behind — which also means the new/returning answer the
+  // backend gives us is trustworthy instead of being poisoned by a leftover
+  // unconfirmed row from a previous attempt.
   const handleAuthContinue = async () => {
     const email = authEmail.trim().toLowerCase();
     if (!email) return setAuthError("Email is required.");
     setAuthLoading(true); setAuthError(null); setAuthMessage(null);
 
-    // Pass 1: treat this as a returning user. shouldCreateUser:false means
-    // Supabase will NOT write an auth.users row if the email is unknown.
-    const { error } = await sendOtp(email, false);
-
-    if (!error) {
-      setIsNewAccount(false);
-      setAuthMessage("");
-      setAuthLoading(false);
+    try {
+      const { is_new_user: isNew, display_name: displayName } = await postJson('/auth/request-otp', { email });
+      setIsNewAccount(!!isNew);
+      setReturningName(isNew ? '' : (displayName || ''));
+      setAuthOtp('');
+      setAuthMessage(isNew ? "Verification code sent to your email!" : "");
       setCurrentView('auth_verify');
-      return;
-    }
-
-    const msg = error.message?.toLowerCase() || '';
-    if (msg.includes('signups not allowed') || msg.includes('not found') || msg.includes('user not found')) {
-      // Pass 2: genuinely new email. This DOES create an unconfirmed
-      // auth.users row — unavoidable, GoTrue needs a row to hang the OTP on.
-      // No public.profiles row is created, so nothing in the app treats this
-      // person as registered until they enter the code. Rows abandoned here
-      // are swept by purge_stale_unconfirmed_users() on a nightly pg_cron job.
-      const { error: signupError } = await sendOtp(email, true);
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
       setAuthLoading(false);
-      if (signupError) return setAuthError(signupError.message);
-      setIsNewAccount(true);
-      setAuthMessage("Verification code sent to your email!");
-      setCurrentView('auth_verify');
-    } else {
-      setAuthLoading(false);
-      setAuthError(error.message);
     }
   };
 
@@ -988,7 +1112,22 @@ export default function App() {
     if (!email || !token) return setAuthError("Email and Code are required.");
     setAuthLoading(true); setAuthError(null);
 
-    const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
+    // Step 1 — the backend checks the code and, ONLY if it is right, creates
+    // auth.users (already confirmed, so the profiles trigger fires on INSERT).
+    // It hands back a one-shot token, not a session.
+    let tokenHash;
+    try {
+      const payload = await postJson('/auth/verify-otp', { email, code: token });
+      tokenHash = payload.token_hash;
+      if (!tokenHash) throw new Error("Verification succeeded but no session was returned. Please try again.");
+    } catch (err) {
+      setAuthError(err.message);
+      setAuthLoading(false);
+      return;
+    }
+
+    // Step 2 — trade the token for a real Supabase session on this device.
+    const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'magiclink' });
     if (error) {
       setAuthError(error.message);
       setAuthLoading(false);
@@ -1002,10 +1141,8 @@ export default function App() {
       return;
     }
 
-    // THE GATE. verifyOtp set email_confirmed_at, which fired the trigger that
-    // creates the public.profiles row. If that row is not there, registration
-    // did not complete and we refuse to let the user into the app rather than
-    // running with a half-provisioned account.
+    // THE GATE, unchanged. If the profiles row isn't there, registration did
+    // not complete and we refuse to run with a half-provisioned account.
     const profile = await waitForProfile(verifiedUser.id);
     if (!profile) {
       await supabase.auth.signOut();
@@ -1124,7 +1261,7 @@ export default function App() {
           className="w-full mt-8 min-h-[56px] flex items-center justify-center rounded-2xl
                      bg-gradient-to-r from-[#8A35FF] to-[#6B2DE2]
                      active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
-                     border border-[1px] focus:border-[#C48DFF]
+                     border border-[1px] border-[#C48DFF]
                      shadow-lg shadow-purple-900/40 transition-all
                      font-manrope font-semibold text-white tracking-wide"
           style={{ fontSize: 'clamp(1rem, 4.2vw, 1.15rem)' }}
@@ -1219,7 +1356,7 @@ const renderAuthEmail = () => (
         className="w-full mt-5 min-h-[52px] flex items-center justify-center rounded-xl
                    bg-gradient-to-r from-[#8A35FF] to-[#6B2DE2]
                    active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
-                   border border-[1px] focus:border-[#C48DFF]
+                   border border-[1px] border-[#C48DFF]
                    shadow-lg shadow-purple-900/40 transition-all
                    disabled:opacity-50 disabled:cursor-not-allowed
                    font-manrope font-semibold text-white tracking-wide"
@@ -1301,14 +1438,18 @@ const renderAuthEmail = () => (
       <BackButton
         bare
         className="mb-4"
-        onClick={() => { setCurrentView('auth'); setAuthError(null); setAuthMessage(null); setAuthOtp(''); }}
+        onClick={() => { setCurrentView('auth'); setAuthError(null); setAuthMessage(null); setAuthOtp(''); setReturningName(''); }}
       />
 
+      {/* returningName comes from /auth/request-otp and is frozen for the life
+          of this screen. userMetadata must NOT be read here: its 'Player One'
+          default showed for everyone, and syncMetadata rewriting it after
+          verification is what made the real name flash before the view flipped. */}
       <h2
         className="font-fraunces font-bold text-white leading-[1.05] tracking-[-0.01em]"
         style={{ fontSize: 'clamp(1.75rem, 7.5vw, 2.35rem)' }}
       >
-        {isNewAccount ? 'Create New Account' : `Welcome Back ${userMetadata.full_name || 'User'}`}
+        {isNewAccount ? 'Create New Account' : `Welcome Back ${returningName || 'User'}`}
       </h2>
 
       <div className="space-y-4 w-full mt-6">
@@ -1345,6 +1486,7 @@ const renderAuthEmail = () => (
           disabled={authLoading}
           className="w-full min-h-[52px] flex items-center justify-center rounded-xl
                      bg-gradient-to-r from-[#7C3AED] to-[#9457EB]
+                     border border-[1px] border-[#C48DFF]
                      active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
                      shadow-lg shadow-purple-900/40 transition-all
                      disabled:opacity-50 disabled:cursor-not-allowed
@@ -2934,7 +3076,13 @@ const renderAuthEmail = () => (
     const likedPercent = totalVotes > 0 ? Math.round((likes / totalVotes) * 100) : null;
 
     const progressPercent = selectedGame.progress || 0;
-    const hasStarted = progressPercent > 0;
+    // "Started" is the existence of a user_progress row, not progress > 0 — a
+    // player who opened the novel and never saved sat at 0% and looked
+    // un-started, which is what wrongly gated the reaction buttons.
+    const hasStarted = !!selectedGame.hasStarted || progressPercent > 0;
+    const endingsFound = new Set(selectedGame.endingsReached || []).size;
+    const endingsTotal = selectedGame.totalEndings || 0;
+    // 100 now means every ending reached — see computeCompletion.
     const isComplete = progressPercent >= 100;
     const buttonLabel = isComplete ? 'Re-Play' : hasStarted ? 'Continue' : 'Play';
 
@@ -2995,21 +3143,31 @@ const renderAuthEmail = () => (
               <div className="flex gap-2.5 flex-shrink-0">
                 <button
                   onClick={() => handleReaction(selectedGame.id, 'like')}
-                  aria-label="Like"
-                  className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all active:scale-90
-                              ${reaction === 'like'
-                                ? 'bg-[#7C3AED] border-[#A855F7] text-white'
-                                : 'bg-[#2D1B4E]/60 border-[#4D3A7A] text-[#C4B5FD] hover:border-[#9457EB]'}`}
+                  disabled={!hasStarted}
+                  aria-label={hasStarted ? 'Like' : 'Start the story to rate it'}
+                  title={hasStarted ? 'Like' : 'Start the story to rate it'}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all
+                              disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100
+                              ${!hasStarted
+                                ? 'bg-[#2D1B4E]/40 border-[#4D3A7A] text-[#C4B5FD]'
+                                : reaction === 'like'
+                                  ? 'bg-[#7C3AED] border-[#A855F7] text-white active:scale-90'
+                                  : 'bg-[#2D1B4E]/60 border-[#4D3A7A] text-[#C4B5FD] hover:border-[#9457EB] active:scale-90'}`}
                 >
                   <ThumbsUp className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => handleReaction(selectedGame.id, 'dislike')}
-                  aria-label="Dislike"
-                  className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all active:scale-90
-                              ${reaction === 'dislike'
-                                ? 'bg-[#7C3AED] border-[#A855F7] text-white'
-                                : 'bg-[#2D1B4E]/60 border-[#4D3A7A] text-[#C4B5FD] hover:border-[#9457EB]'}`}
+                  disabled={!hasStarted}
+                  aria-label={hasStarted ? 'Dislike' : 'Start the story to rate it'}
+                  title={hasStarted ? 'Dislike' : 'Start the story to rate it'}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all
+                              disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100
+                              ${!hasStarted
+                                ? 'bg-[#2D1B4E]/40 border-[#4D3A7A] text-[#C4B5FD]'
+                                : reaction === 'dislike'
+                                  ? 'bg-[#7C3AED] border-[#A855F7] text-white active:scale-90'
+                                  : 'bg-[#2D1B4E]/60 border-[#4D3A7A] text-[#C4B5FD] hover:border-[#9457EB] active:scale-90'}`}
                 >
                   <ThumbsDown className="w-4 h-4" />
                 </button>
@@ -3037,7 +3195,7 @@ const renderAuthEmail = () => (
                 </span>
               ) : (
                 <span className="font-manrope text-[#FFFFFF] flex-shrink-0" style={{ fontSize: 'clamp(13px, 3.7vw, 15px)' }}>
-                  Be the first critic
+                  {hasStarted ? 'Be the first critic' : 'Start playing to rate'}
                 </span>
               )}
             </div>
@@ -3051,7 +3209,7 @@ const renderAuthEmail = () => (
                   style={{ width: `${progressPercent}%` }}
                 />
                 <span className="relative z-10 font-manrope font-bold text-white drop-shadow-md tracking-wide" style={{ fontSize: '12px' }}>
-                  {progressPercent}% Explored
+                  {progressPercent}% Explored{endingsTotal > 0 ? ` · ${endingsFound}/${endingsTotal} endings` : ''}
                 </span>
               </div>
             )}
@@ -3111,15 +3269,19 @@ const renderAuthEmail = () => (
     // In landscape the viewport is WIDE and SHORT (~868x411 on a 1080p phone),
     // so height is the binding constraint, not width. Every size below keys
     // off vh. 1vh is ~4.1px on that device, ~7.2px on a tablet in landscape.
+    // In landscape the viewport is WIDE and SHORT (~868x411 on a 1080p phone),
+    // so height is the binding constraint, not width. Every size below keys
+    // off vh. 1vh is ~4.1px on that device, ~7.2px on a tablet in landscape.
+    // Shared by the paused menu and the story_end screen.
     const menuBtn =
-      "w-full text-white font-bold font-markazi rounded-lg border border-[#8000FF] transition " +
-      "py-[clamp(0.3rem,1.5vh,0.9rem)] px-3 text-[clamp(14px,4.2vh,28px)] leading-none";
+      "w-full text-white font-manrope font-bold rounded-lg border border-[#8000FF] transition " +
+      "py-[clamp(0.45rem,2.4vh,1.1rem)] px-3 text-[clamp(13px,5.2vh,26px)] leading-none";
 
     // Bigger variant used only on the main menu ("Start New Game" screen),
     // which has just 3 buttons and plenty of vertical room, so it can afford
     // larger text/padding than the denser paused/save/load menus.
     const mainMenuBtn =
-      "w-full text-white font-bold font-markazi rounded-lg border border-[#8000FF] transition " +
+      "w-full text-white font-manrope font-bold rounded-lg border border-[#8000FF] transition " +
       "py-[clamp(0.5rem,2.4vh,1.25rem)] px-4 text-[clamp(20px,5.8vh,36px)] leading-none";
 
     return (
@@ -3155,25 +3317,25 @@ const renderAuthEmail = () => (
             </div>
           )}
 
-          {/* PAUSED — five buttons is the tightest stack in the app. Sizes are
-              deliberately smaller than the main menu so the whole set clears
-              a 411px-tall viewport without scrolling; it still scrolls as a
-              fallback on anything shorter. */}
+          {/* PAUSED — five buttons is the tightest stack in the app. The stack
+              is deliberately narrow (~220px) and the buttons tall, matching the
+              reference; five at this height plus the title still clears a
+              411px viewport, and it scrolls as a fallback on anything shorter. */}
           {playerState === 'paused' && (
             <div className="relative z-10 w-full h-full flex flex-col items-center justify-center overflow-y-auto
                             px-6
                             py-[max(1rem,env(safe-area-inset-top))]
                             bg-black/30 backdrop-blur-[2px]">
-               <h1 className="text-[clamp(18px,5vh,34px)] font-serif font-bold text-white mb-[clamp(0.5rem,2.5vh,2rem)] drop-shadow-xl text-center px-4 break-words flex-shrink-0">
+               <h1 className="text-[clamp(20px,6.8vh,40px)] font-fraunces font-bold text-white mb-[clamp(0.6rem,6vh,2.5rem)] drop-shadow-xl text-center px-4 break-words flex-shrink-0">
                  {selectedGame?.title || 'Visual Novel'}
                </h1>
 
-               <div className="w-full max-w-[min(70vw,300px)] space-y-[clamp(0.35rem,1.3vh,0.75rem)] flex-shrink-0">
-                 <button onClick={() => setPlayerState('playing')} className={`${menuBtn} bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/80 shadow-sm`}>Resume</button>
-                 <button onClick={() => { setSequenceIndex(0); setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id); setPlayerState('playing'); }} className={`${menuBtn} bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/80 shadow-sm`}>Start New Game</button>
-                 <button onClick={() => setPlayerState('save_menu')} className={`${menuBtn} bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/80 shadow-sm`}>Save Game</button>
-                 <button onClick={() => setPlayerState('load_menu')} className={`${menuBtn} bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/80 shadow-sm`}>Load Game</button>
-                 <button onClick={() => setCurrentView('game_detail')} className={`${menuBtn} bg-[#5F448E80]/50 backdrop-blur-md hover:bg-[#5F448E80]/80 shadow-sm`}>Exit</button>
+               <div className="w-full max-w-[min(56vw,225px)] space-y-[clamp(0.35rem,3.2vh,1rem)] flex-shrink-0">
+                 <button onClick={() => setPlayerState('playing')} className={`${menuBtn} bg-[#5F448E]/50 backdrop-blur-md hover:bg-[#5F448E]/80 shadow-sm`}>Resume</button>
+                 <button onClick={() => { setSequenceIndex(0); setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id); setPlayerState('playing'); }} className={`${menuBtn} bg-[#5F448E]/50 backdrop-blur-md hover:bg-[#5F448E]/80 shadow-sm`}>Start New Game</button>
+                 <button onClick={() => setPlayerState('save_menu')} className={`${menuBtn} bg-[#5F448E]/50 backdrop-blur-md hover:bg-[#5F448E]/80 shadow-sm`}>Save Game</button>
+                 <button onClick={() => setPlayerState('load_menu')} className={`${menuBtn} bg-[#5F448E]/50 backdrop-blur-md hover:bg-[#5F448E]/80 shadow-sm`}>Load Game</button>
+                 <button onClick={() => setCurrentView('game_detail')} className={`${menuBtn} bg-[#5F448E]/50 backdrop-blur-md hover:bg-[#5F448E]/80 shadow-sm`}>Exit</button>
                </div>
             </div>
           )}
@@ -3187,9 +3349,15 @@ const renderAuthEmail = () => (
                             py-[max(1rem,env(safe-area-inset-top))]
                             bg-black/40 backdrop-blur-[2px]">
                <h1 className="text-[clamp(24px,7vh,44px)] font-markazi font-bold text-white mb-[clamp(0.4rem,1.5vh,1rem)] drop-shadow-xl flex-shrink-0">The End</h1>
-               <p className="text-purple-200 font-markazi text-[clamp(14px,4vh,22px)] leading-snug max-w-md mx-auto mb-[clamp(0.75rem,3vh,2.5rem)] flex-shrink-0">
+               <p className="text-purple-200 font-markazi text-[clamp(14px,4vh,22px)] leading-snug max-w-md mx-auto mb-[clamp(0.4rem,1.5vh,1rem)] flex-shrink-0">
                  You've reached the end of this path. Thanks for playing {selectedGame?.title || 'this story'}.
                </p>
+               {storyEndings.total > 0 && (
+                 <p className="text-[#C48DFF] font-manrope font-bold text-[clamp(12px,3.4vh,18px)] mb-[clamp(0.75rem,3vh,2.5rem)] flex-shrink-0">
+                   {new Set(storyEndings.reached).size} of {storyEndings.total} endings found
+                   {new Set(storyEndings.reached).size >= storyEndings.total ? ' — 100% complete!' : ''}
+                 </p>
+               )}
                <div className="w-full max-w-[min(70vw,300px)] space-y-[clamp(0.35rem,1.3vh,0.75rem)] flex-shrink-0">
                  <button onClick={() => { setSequenceIndex(0); setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id); setPlayerState('playing'); }} className={`${menuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Play Again</button>
                  <button onClick={() => setCurrentView('game_detail')} className={`${menuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Exit</button>
@@ -3303,11 +3471,14 @@ const renderAuthEmail = () => (
                  </div>
                )}
 
-                {(!isEndOfSequence || !(currentScene.choices && currentScene.choices.length > 0)) ? (
-                 <div className="mt-auto relative z-40 w-full flex justify-center cursor-pointer
+                                {(!isEndOfSequence || !(currentScene.choices && currentScene.choices.length > 0)) ? (
+                 // The wrapper is no longer a tap target. Tapping anywhere in
+                 // the dialogue box used to advance, which stole taps meant for
+                 // scrolling long text and made mis-taps skip lines. Only the
+                 // arrow moves the story now.
+                 <div className="mt-auto relative z-40 w-full flex justify-center
                                  px-[max(0.75rem,env(safe-area-inset-left))]
-                                 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
-                      onClick={advanceStory}>
+                                 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                     <div className="relative w-full max-w-3xl">
                        {/* block w-fit, NOT inline-block: an inline-level badge sits
                            on a text baseline and the line box adds descender space
@@ -3325,17 +3496,26 @@ const renderAuthEmail = () => (
                          </div>
                        )}
 
-                       <div className={`bg-[#000228]/80 border-2 border-[#C48DFF]/70 w-full rounded-xl ${currentSequenceBlock.speaker ? 'rounded-tl-none' : ''} px-6 py-[clamp(0.9rem,3.2vh,2rem)] pr-14 text-white font-fraunces text-[clamp(15px,4.6vh,24px)] leading-snug shadow-[0_0_30px_rgba(0,0,0,0.8)] relative break-words min-h-[clamp(64px,20vh,150px)] max-h-[42vh] overflow-y-auto no-scrollbar`}>
+                       <div className={`bg-[#000228]/80 border-2 border-[#C48DFF]/70 w-full rounded-xl ${currentSequenceBlock.speaker ? 'rounded-tl-none' : ''} px-6 py-[clamp(0.9rem,3.2vh,2rem)] pr-14 text-white font-fraunces text-[clamp(15px,4.6vh,24px)] leading-snug shadow-[0_0_30px_rgba(0,0,0,0.8)] relative break-words min-h-[clamp(64px,20vh,150px)] max-h-[42vh] overflow-y-auto no-scrollbar select-none`}>
                           <span className={currentSequenceBlock.type === 'narrative' ? 'italic text-[#D8B4FE]' : 'text-gray-100'}>
                              {currentSequenceBlock.text || 'The silent dark city envelops you...'}
                           </span>
                        </div>
 
-                       {/* Moved outside the scrolling box so it stays pinned
-                           while long dialogue scrolls underneath. */}
-                       <div className="absolute bottom-3 right-4 bg-white w-[clamp(24px,6vh,34px)] h-[clamp(24px,6vh,34px)] rounded-full flex items-center justify-center shadow-lg pointer-events-none">
+                       {/* Outside the scrolling box so it stays pinned while long
+                           dialogue scrolls underneath. This is now the ONLY way
+                           forward, so it is a real <button>, not a decal. */}
+                       <button
+                         type="button"
+                         onClick={advanceStory}
+                         aria-label="Continue"
+                         className="absolute bottom-3 right-4 z-20 bg-white
+                                    w-[clamp(24px,6vh,34px)] h-[clamp(24px,6vh,34px)]
+                                    rounded-full flex items-center justify-center shadow-lg
+                                    hover:bg-[#EDE9FE] active:scale-90 transition-all"
+                       >
                          <ArrowRight className="w-[60%] h-[60%] text-[#4C1D95]" strokeWidth={3} />
-                       </div>
+                       </button>
                     </div>
                  </div>
                ) : (

@@ -47,9 +47,13 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     flowType: 'pkce',
     autoRefreshToken: true,
     persistSession: true,
-    // On native we receive the OAuth code via a deep link and exchange it
-    // ourselves, so the SDK must not try to parse it out of window.location.
-    detectSessionInUrl: !IS_NATIVE,
+    // We exchange the code ourselves on BOTH platforms. Letting the SDK do it
+    // on web raced the 2500ms splash timer: if the exchange landed second,
+    // getSession() returned null, the gate parked on 'splash', and the
+    // SIGNED_IN that arrived afterwards never moved the view because
+    // onAuthStateChange doesn't navigate. Doing it explicitly means the
+    // session and the view transition happen in one ordered path.
+    detectSessionInUrl: false,
     // Leave `storage` at the default (localStorage). The PKCE code verifier
     // lives at sb-<ref>-auth-token-code-verifier and has to survive the WebView
     // being backgrounded while the Custom Tab is open. An in-memory store
@@ -1418,6 +1422,48 @@ export default function App() {
       cancelled = true;
       listenerHandle?.remove();
     };
+  }, []);
+
+    // Web counterpart to the appUrlOpen listener above. Google redirects the
+  // whole page back to window.location.origin with ?code=, so we read it on
+  // mount, exchange it, and drive the same finishGoogleSignIn path.
+  useEffect(() => {
+    if (IS_NATIVE) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const providerError = params.get('error_description') || params.get('error');
+    if (!code && !providerError) return;
+
+    // Strip the query before doing anything else. An authorization code is
+    // single-use, so leaving it in the address bar means any refresh retries a
+    // spent code and fails with "invalid request".
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    // Set synchronously: the bootstrap timer is already counting down and its
+    // gate must not run getSession() while this exchange is in flight.
+    oauthInFlightRef.current = true;
+    setGoogleLoading(true);
+
+    (async () => {
+      try {
+        if (providerError) throw new Error(providerError);
+
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) throw error;
+
+        const oauthUser = data?.session?.user;
+        if (!oauthUser) throw new Error('Google sign-in returned no session.');
+
+        await finishGoogleSignIn(oauthUser);
+      } catch (e) {
+        console.error('[vystoria] web oauth callback failed:', e);
+        setAuthError(e?.message || 'Google sign-in failed. Please try again.');
+        setGoogleLoading(false);
+        oauthInFlightRef.current = false;
+        setCurrentView('auth');
+      }
+    })();
   }, []);
 
   const handleLogout = async () => {

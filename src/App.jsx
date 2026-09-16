@@ -2,6 +2,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
+// Aliased: the default export of this file is `function App()`. Importing the
+// plugin as `App` shadows the component and white-screens on launch.
+import { App as CapacitorApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 import { ScreenOrientation } from '@capacitor/screen-orientation';
 import {
   Home, Search as SearchIcon, BookOpen, Trophy, User,
@@ -23,16 +27,33 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 
 const IS_NATIVE = Capacitor.isNativePlatform();
 
+// --- OAUTH DEEP LINK ---
+// Four places must agree character for character:
+//   1. appId in capacitor.config.ts
+//   2. <data android:scheme> in AndroidManifest.xml
+//   3. CFBundleURLSchemes in Info.plist
+//   4. Authentication > URL Configuration > Redirect URLs in Supabase
+// No underscores anywhere: Supabase's redirect matcher rejects them and
+// silently falls back to Site URL, so the Custom Tab never returns.
+const OAUTH_SCHEME = 'com.darkcity.vystoria';
+const NATIVE_OAUTH_REDIRECT = `${OAUTH_SCHEME}://auth-callback`;
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    // PKCE is required for the Capacitor OAuth flow in section 2.
-    // Set it explicitly rather than relying on the SDK default.
+    // PKCE is required for the Capacitor OAuth flow: the deep link carries a
+    // short-lived ?code= which we exchange ourselves. The implicit flow puts
+    // tokens in a URL fragment, and fragments don't reliably survive a deep
+    // link on Android.
     flowType: 'pkce',
     autoRefreshToken: true,
     persistSession: true,
     // On native we receive the OAuth code via a deep link and exchange it
     // ourselves, so the SDK must not try to parse it out of window.location.
     detectSessionInUrl: !IS_NATIVE,
+    // Leave `storage` at the default (localStorage). The PKCE code verifier
+    // lives at sb-<ref>-auth-token-code-verifier and has to survive the WebView
+    // being backgrounded while the Custom Tab is open. An in-memory store
+    // breaks Google sign-in with "code verifier should be non-empty".
   },
 });
 
@@ -52,6 +73,8 @@ import helpIcon from './assets/Help Icon.svg';
 import logoutIcon from './assets/Logout Icon.png';
 import deleteIcon from './assets/Delete Icon.png';
 import mailIcon1 from './assets/mailIcon1.png';
+import newAccountArt from './assets/New_account.png';
+import crossIcon from './assets/cross.png';
 //import navHomeIcon from './assets/homee.svg';
 //import navTrophyIcon from './assets/trophy.svg';
 //import navLibraryIcon from './assets/library.svg';
@@ -338,6 +361,22 @@ export default function App() {
   const [authError, setAuthError] = useState(null);
   const [authMessage, setAuthMessage] = useState(null);
 
+  // --- GOOGLE SIGN-IN ---
+  // Separate from authLoading so the "Confirm" button on the email screen
+  // doesn't spin while the Google Custom Tab is open.
+  const [googleLoading, setGoogleLoading] = useState(false);
+  // The signed-in-but-not-yet-onboarded user behind the "New to Vystoria?"
+  // card. Deliberately NOT `user` — they aren't in the app yet, and putting
+  // them in `user` would let the nav and cloud fetches fire behind the modal.
+  const [pendingGoogleUser, setPendingGoogleUser] = useState(null);
+  const [showNewAccountModal, setShowNewAccountModal] = useState(false);
+  const [googleConfirmLoading, setGoogleConfirmLoading] = useState(false);
+  // True from the moment the Custom Tab opens until the flow resolves —
+  // INCLUDING while the card is on screen. The splash bootstrap and the
+  // onAuthStateChange listener both defer to this; without it the listener
+  // sees SIGNED_IN and drops a half-registered user straight into 'main'.
+  const oauthInFlightRef = useRef(false);
+
 
   const [resendCountdown, setResendCountdown] = useState(60);
   const [resendSuccess, setResendSuccess] = useState(false);
@@ -611,7 +650,7 @@ export default function App() {
     if (!userId) return null;
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, email, full_name, avatar_url')
+      .select('id, email, full_name, avatar_url, onboarded_at')
       .eq('id', userId)
       .maybeSingle();
     if (error) {
@@ -669,6 +708,11 @@ export default function App() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
+      // A Google round-trip may still be resolving (Custom Tab open, code
+      // being exchanged, or the "New to Vystoria?" card on screen). Running
+      // the gate now would sign out someone mid-signup.
+      if (oauthInFlightRef.current) return;
+
       supabase.auth.getSession().then(async ({ data: { session } }) => {
         const sessionUser = session?.user;
 
@@ -688,14 +732,25 @@ export default function App() {
           return;
         }
 
+        // A session whose profile was never onboarded belongs to someone who
+        // signed in with Google and then killed the app instead of answering
+        // the card. Ask again rather than letting a ghost account through.
+        // This is also the whole web path: there is no deep link on web, so
+        // detectSessionInUrl restores the session and we land here on reload.
+        if (!profile.onboarded_at) {
+          oauthInFlightRef.current = true;
+          setPendingGoogleUser(sessionUser);
+          setShowNewAccountModal(true);
+          setCurrentView('auth');
+          return;
+        }
+
         setUser(sessionUser);
         syncMetadata(sessionUser, profile);
         setCurrentView('main');
         fetchCloudGames(sessionUser);
       });
     }, 2500);
-
-    
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const nextUser = session?.user ?? null;
@@ -706,11 +761,24 @@ export default function App() {
         return;
       }
 
-      setUser(nextUser);
+      // During a Google flow, finishGoogleSignIn owns the user / metadata /
+      // view transition. Letting this listener race it double-fetches the
+      // profile and can flip to 'main' behind the card.
+      if (oauthInFlightRef.current) return;
+
       if (nextUser) {
         const profile = await fetchProfile(nextUser.id);
+        // Not an account until the card is answered — don't spin up cloud
+        // fetches or populate `user` behind it.
+        if (!profile?.onboarded_at) {
+          setUser(null);
+          return;
+        }
+        setUser(nextUser);
         syncMetadata(nextUser, profile);
         fetchCloudGames(nextUser);
+      } else {
+        setUser(null);
       }
     });
 
@@ -1106,6 +1174,24 @@ export default function App() {
     }
   };
 
+  // The single hand-off into the app, shared by the OTP path and the Google
+  // path. Nothing else may call setCurrentView('welcome').
+  const completeSignIn = (sessionUser, profile) => {
+    setUser(sessionUser);
+    syncMetadata(sessionUser, profile);
+    setAuthLoading(false);
+    setGoogleLoading(false);
+    setGoogleConfirmLoading(false);
+    setShowNewAccountModal(false);
+    setPendingGoogleUser(null);
+    oauthInFlightRef.current = false;
+    setCurrentView('welcome');
+    setTimeout(() => {
+      setCurrentView('main');
+      fetchCloudGames(sessionUser);
+    }, 1600);
+  };
+
   const handleVerifyOtp = async () => {
     const email = authEmail.trim().toLowerCase();
     const token = authOtp.trim();
@@ -1114,7 +1200,9 @@ export default function App() {
 
     // Step 1 — the backend checks the code and, ONLY if it is right, creates
     // auth.users (already confirmed, so the profiles trigger fires on INSERT).
-    // It hands back a one-shot token, not a session.
+    // It hands back a one-shot token, not a session. It also stamps
+    // onboarded_at, because entering a correct code IS the confirmation of
+    // intent — the OTP path never sees the "New to Vystoria?" card.
     let tokenHash;
     try {
       const payload = await postJson('/auth/verify-otp', { email, code: token });
@@ -1152,15 +1240,185 @@ export default function App() {
       return;
     }
 
-    setUser(verifiedUser);
-    syncMetadata(verifiedUser, profile);
-    setAuthLoading(false);
-    setCurrentView('welcome');
-    setTimeout(() => {
-      setCurrentView('main');
-      fetchCloudGames(verifiedUser);
-    }, 1600);
+    completeSignIn(verifiedUser, profile);
   };
+
+  // ==========================================
+  // GOOGLE SIGN-IN
+  // ==========================================
+  // signInWithOAuth has no "look before you leap" hook — the auth.users row is
+  // created the moment Google redirects back, so we cannot ask "does this
+  // account exist?" before it does. profiles.onboarded_at is the intent marker
+  // that closes the gap: the row exists, but it is not an account until the
+  // human taps Confirm. The ✕ deletes it.
+
+  const finishGoogleSignIn = async (sessionUser) => {
+    // The profiles row comes from the on_auth_user_confirmed trigger. Google
+    // users arrive with email_confirmed_at already set, so it fires on INSERT.
+    const profile = await waitForProfile(sessionUser.id);
+
+    if (!profile) {
+      await supabase.auth.signOut();
+      setUser(null);
+      setGoogleLoading(false);
+      oauthInFlightRef.current = false;
+      setAuthError("We couldn't finish setting up your account. Please try again in a moment.");
+      return;
+    }
+
+    if (!profile.onboarded_at) {
+      // Brand new. Hold them on the auth screen behind the card — do NOT set
+      // `user`, or the nav and cloud fetches start up behind the modal.
+      setPendingGoogleUser(sessionUser);
+      setShowNewAccountModal(true);
+      setGoogleLoading(false);
+      setCurrentView('auth');
+      return;   // oauthInFlightRef deliberately stays true
+    }
+
+    // Already a real account — straight through, no card.
+    completeSignIn(sessionUser, profile);
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (googleLoading || authLoading) return;
+    setGoogleLoading(true);
+    setAuthError(null);
+    setAuthMessage(null);
+
+    try {
+      if (IS_NATIVE) oauthInFlightRef.current = true;
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: IS_NATIVE ? NATIVE_OAUTH_REDIRECT : window.location.origin,
+          skipBrowserRedirect: IS_NATIVE,
+          // Always show the chooser. Without this, a phone with one Google
+          // account signs that account back in with no way to switch.
+          queryParams: { prompt: 'select_account' },
+        },
+      });
+
+      if (error) throw error;
+
+      if (IS_NATIVE) {
+        if (!data?.url) throw new Error('Google sign-in did not return an authorization URL.');
+        await Browser.open({ url: data.url, presentationStyle: 'popover' });
+        // googleLoading stays true on purpose — the appUrlOpen listener owns
+        // it from here.
+        return;
+      }
+      // Web: supabase-js has already navigated away.
+    } catch (e) {
+      oauthInFlightRef.current = false;
+      setGoogleLoading(false);
+      setAuthError(e?.message || 'Google sign-in failed. Please try again.');
+    }
+  };
+
+  // "Confirm" on the card. Stamping onboarded_at is what turns the row into a
+  // real account — same client-side write path updateMetadata already uses.
+  const handleConfirmNewGoogleAccount = async () => {
+    if (!pendingGoogleUser || googleConfirmLoading) return;
+    setGoogleConfirmLoading(true);
+    setAuthError(null);
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ onboarded_at: new Date().toISOString() })
+      .eq('id', pendingGoogleUser.id);
+
+    if (error) {
+      console.error('Failed to mark account onboarded:', error);
+      setGoogleConfirmLoading(false);
+      setAuthError("We couldn't finish creating your account. Please try again.");
+      return;
+    }
+
+    const profile = await fetchProfile(pendingGoogleUser.id);
+    completeSignIn(pendingGoogleUser, profile);
+  };
+
+  // "✕" on the card. The auth.users row already exists, so backing out has to
+  // delete it — otherwise the address is stuck in limbo and every later
+  // attempt lands right back on this card. delete_user is pinned to auth.uid()
+  // server-side, so it can only ever remove the row we just created.
+  const handleCancelNewGoogleAccount = async () => {
+    if (googleConfirmLoading) return;
+    setGoogleConfirmLoading(true);
+
+    try {
+      const { error } = await supabase.rpc('delete_user');
+      if (error) throw error;
+    } catch (e) {
+      // Don't trap the user in the card over a failed cleanup. The row keeps
+      // onboarded_at NULL, so the next attempt just shows this card again.
+      console.error('Failed to discard abandoned Google signup:', e);
+    }
+
+    await supabase.auth.signOut();
+    setUser(null);
+    setPendingGoogleUser(null);
+    setShowNewAccountModal(false);
+    setGoogleConfirmLoading(false);
+    setGoogleLoading(false);
+    setAuthError(null);
+    oauthInFlightRef.current = false;
+    setCurrentView('auth');
+  };
+
+  // Receives com.darkcity.vystoria://auth-callback?code=... from the Custom Tab
+  // and exchanges the PKCE code for a session. Native only — on web,
+  // detectSessionInUrl restores the session and the splash bootstrap handles it.
+  useEffect(() => {
+    if (!IS_NATIVE) return;
+
+    let listenerHandle;
+    let cancelled = false;
+
+    (async () => {
+      const handle = await CapacitorApp.addListener('appUrlOpen', async ({ url }) => {
+        if (!url || !url.startsWith(`${OAUTH_SCHEME}://`)) return;
+
+        // Dismiss the Custom Tab so the user isn't left on a blank page.
+        try { await Browser.close(); } catch { /* already closed on some OEMs */ }
+
+        try {
+          const parsed = new URL(url);
+          const providerError =
+            parsed.searchParams.get('error_description') ||
+            parsed.searchParams.get('error');
+          if (providerError) throw new Error(providerError);
+
+          const code = parsed.searchParams.get('code');
+          if (!code) throw new Error('Google sign-in returned no authorization code.');
+
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
+
+          const oauthUser = data?.session?.user;
+          if (!oauthUser) throw new Error('Google sign-in returned no session.');
+
+          await finishGoogleSignIn(oauthUser);
+        } catch (e) {
+          console.error('[vystoria] oauth callback failed:', e);
+          setAuthError(e?.message || 'Google sign-in failed. Please try again.');
+          setGoogleLoading(false);
+          oauthInFlightRef.current = false;
+          setCurrentView('auth');
+        }
+      });
+
+      if (cancelled) { handle.remove(); return; }
+      listenerHandle = handle;
+    })();
+
+    return () => {
+      cancelled = true;
+      listenerHandle?.remove();
+    };
+  }, []);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -1352,7 +1610,7 @@ const renderAuthEmail = () => (
 
       <button
         onClick={handleAuthContinue}
-        disabled={authLoading}
+        disabled={authLoading || googleLoading}
         className="w-full mt-5 min-h-[52px] flex items-center justify-center rounded-xl
                    bg-gradient-to-r from-[#8A35FF] to-[#6B2DE2]
                    active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
@@ -1377,13 +1635,22 @@ const renderAuthEmail = () => (
       </div>
 
       <button
+        onClick={handleGoogleSignIn}
+        disabled={googleLoading || authLoading}
         className="w-full min-h-[52px] flex items-center justify-center gap-3 rounded-xl
                    bg-white active:bg-[#EFEFEF] hover:bg-[#F7F7F7] transition-colors
+                   disabled:opacity-50 disabled:cursor-not-allowed
                    font-manrope font-semibold text-[#1A0F33]"
         style={{ fontSize: 'clamp(0.95rem, 4vw, 1.05rem)' }}
       >
-        <FcGoogle size={24} />
-        <span>Sign-in with Google</span>
+        {googleLoading ? (
+          <Loader2 className="w-5 h-5 animate-spin text-[#1A0F33]" />
+        ) : (
+          <>
+            <FcGoogle size={24} />
+            <span>Sign-in with Google</span>
+          </>
+        )}
       </button>
 
       <p
@@ -1410,6 +1677,96 @@ const renderAuthEmail = () => (
           Privacy Policy
         </a>.
       </p>
+      
+      {/* New account gate. Only reachable from Google sign-in: the OTP path
+          confirms intent by entering a code, so it never lands here. */}
+      {showNewAccountModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
+
+          {/* Its own surface, matching the logout/delete modal treatment —
+              paint authBg rather than blurring the screen underneath. */}
+          <div className="absolute inset-0">
+            <img src={authBg} alt="" aria-hidden="true" className="w-full h-full object-cover object-center" />
+            <div className="absolute inset-0 bg-[#0B0B14]/70" />
+          </div>
+
+          <div className="relative w-full max-w-[340px] rounded-[22px] px-6 pt-8 pb-6 text-center
+                          bg-gradient-to-b from-[#251050] via-[#170A3C] to-[#13072E]
+                          border border-[#4D258F] shadow-2xl shadow-black/70">
+
+            <button
+              onClick={handleCancelNewGoogleAccount}
+              disabled={googleConfirmLoading}
+              aria-label="Cancel and discard this sign-in"
+              className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center
+                         active:scale-[0.92] transition-transform
+                         disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <img src={crossIcon} alt="" aria-hidden="true" className="w-full h-full object-contain" />
+            </button>
+
+            <img
+              src={newAccountArt}
+              alt=""
+              aria-hidden="true"
+              className="w-[92px] h-[92px] mx-auto object-contain"
+            />
+
+            <h2
+              className="mt-5 font-fraunces font-bold text-white leading-[1.1] tracking-[-0.01em]"
+              style={{ fontSize: 'clamp(1.55rem, 7vw, 1.95rem)' }}
+            >
+              New to Vystoria?
+            </h2>
+
+            <p
+              className="mt-2.5 font-manrope text-[#C9C2DA] leading-[1.5]"
+              style={{ fontSize: 'clamp(0.8rem, 3.5vw, 0.92rem)' }}
+            >
+              This gmail isn't linked to an account yet.
+            </p>
+
+            {/* Read-only by design: the address comes from Google, not the
+                user, so this is a <div> and not a disabled <input>. */}
+            <div
+              className="mt-4 w-full min-h-[48px] rounded-xl bg-[#8580AD]
+                         flex items-center justify-center px-4
+                         font-manrope text-[#1A093D] truncate"
+              style={{ fontSize: 'clamp(0.9rem, 3.9vw, 1rem)' }}
+            >
+              {pendingGoogleUser?.email || ''}
+            </div>
+
+            <p
+              className="mt-4 font-manrope text-[#C9C2DA] leading-[1.5]"
+              style={{ fontSize: 'clamp(0.8rem, 3.5vw, 0.92rem)' }}
+            >
+              Create an account to continue.
+            </p>
+
+            {authError && (
+              <p className="mt-2 font-manrope text-xs text-red-400">
+                {authError}
+              </p>
+            )}
+
+            <button
+              onClick={handleConfirmNewGoogleAccount}
+              disabled={googleConfirmLoading}
+              className="w-full mt-4 min-h-[52px] flex items-center justify-center rounded-xl
+                         bg-gradient-to-r from-[#8A35FF] to-[#6B2DE2]
+                         active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
+                         border border-[1px] focus:border-[#C48DFF]
+                         shadow-lg shadow-purple-900/40 transition-all
+                         disabled:opacity-50 disabled:cursor-not-allowed
+                         font-manrope font-semibold text-white tracking-wide"
+              style={{ fontSize: 'clamp(1rem, 4.2vw, 1.1rem)' }}
+            >
+              {googleConfirmLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Confirm"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   </div>
 );
@@ -1436,7 +1793,6 @@ const renderAuthEmail = () => (
       }}
     >
       <BackButton
-        bare
         className="mb-4"
         onClick={() => { setCurrentView('auth'); setAuthError(null); setAuthMessage(null); setAuthOtp(''); setReturningName(''); }}
       />

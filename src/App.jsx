@@ -288,7 +288,10 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // deferred-signup note in server.py. Trailing slash stripped so
 // `${API_BASE_URL}/auth/...` can't produce a double slash.
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-const AUTH_REQUEST_TIMEOUT_MS = 25000;
+// Render's free tier spins down after ~15 min idle and cold-starts in 30-50s.
+// At 25s the first sign-in after a quiet period aborted client-side before the
+// backend had finished waking. Drop this back to 25000 on a paid instance.
+const AUTH_REQUEST_TIMEOUT_MS = 45000;
 
 const postJson = async (path, body) => {
   if (!API_BASE_URL) throw new Error('Sign-in is not configured. Please try again later.');

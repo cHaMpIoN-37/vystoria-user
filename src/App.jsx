@@ -12,7 +12,7 @@ import {
   LogOut, Trash2, Mail, CheckCircle2, Settings, Loader2,
   Menu, ArrowLeft, Save, Download, Check, Bookmark,
   Edit3, Camera, Heart, ThumbsUp, ThumbsDown, Copy,
-  ArrowRight, Undo2, ChevronRight, Lock
+  ArrowRight, Undo2, ChevronRight, Lock, X
 } from 'lucide-react';
 
 // --- SUPABASE CONFIGURATION ---
@@ -351,6 +351,39 @@ const computeCompletion = ({ endingsReached = [], totalEndings = 0, scenePercent
   return Math.min(99, Math.max(endingsPercent, floorPercent));
 };
 
+// --- HOME RAILS ---
+// Genre is the free-text "Genre Tags" field from the creator app (e.g.
+// "Action / Dark Fantasy"), so rails match on keywords, not equality, and one
+// story can sit in several rails. Array order = order on Home. To add a genre,
+// add a row here — nothing else needs to change.
+const GENRE_RAILS = [
+  { title: 'Horror',        keywords: ['horror'] },
+  { title: 'Action',        keywords: ['action'] },
+  { title: 'Mystery',       keywords: ['mystery', 'detective'] },
+  { title: 'Sci-Fi',        keywords: ['sci-fi', 'scifi', 'sci fi', 'science fiction', 'cyberpunk', 'space opera'] },
+  { title: 'Drama',         keywords: ['drama'] },
+  { title: 'Romance',       keywords: ['romance', 'romantic'] },
+  { title: 'Fantasy',       keywords: ['fantasy'] },
+  { title: 'Thriller',      keywords: ['thriller', 'suspense'] },
+  { title: 'Adventure',     keywords: ['adventure'] },
+  { title: 'Comedy',        keywords: ['comedy', 'comedic', 'humor', 'humour'] },
+  { title: 'Slice of Life', keywords: ['slice of life', 'slice-of-life'] },
+  { title: 'Historical',    keywords: ['historical', 'history'] },
+];
+
+const matchesGenre = (game, keywords) => {
+  const genre = (game.genre || '').toLowerCase();
+  return keywords.some(k => genre.includes(k));
+};
+
+// Single ranking shared by Search's "Top Search" and Home's "Trending now" so
+// the two can never drift apart. Array.prototype.sort is stable, so ties keep
+// fetch order (newest first), exactly as Top Search always has.
+const sortByTopSearch = (list) =>
+  [...list].sort((a, b) => (b.search_count || 0) - (a.search_count || 0));
+
+const NAME_MAX_LENGTH = 30;
+
 export default function App() {
   const [currentView, setCurrentView] = useState('init');
   const [currentTab, setCurrentTab] = useState('home');
@@ -545,6 +578,15 @@ export default function App() {
   const [showAccNotFound, setShowAccNotFound] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [emailCopied, setEmailCopied] = useState(false);
+
+  // Profile: inline name edit + avatar upload. Declared here, not inside
+  // renderProfile, because renderProfile is a plain function that only runs
+  // on the Profile tab — hooks inside it would break React's hook order.
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState(null);
+  const avatarInputRef = useRef(null);
   const [supportCopied, setSupportCopied] = useState(false);
 
   const [playerState, setPlayerState] = useState('main_menu');
@@ -575,6 +617,7 @@ export default function App() {
   const [playerError, setPlayerError] = useState(null);
 
   const [sortBy, setSortBy] = useState('recentlyAdded');
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [libraryFilter, setLibraryFilter] = useState('all');   // 'all' | 'in_progress' | 'saved' | 'completed'
 
   const [confirmSaveIdx, setConfirmSaveIdx] = useState(null); // slot index awaiting "Do you want to save?" confirmation
@@ -867,6 +910,125 @@ export default function App() {
     navigator.clipboard?.writeText(user.email);
     setEmailCopied(true);
     setTimeout(() => setEmailCopied(false), 1500);
+  };
+
+  // --- PROFILE: INLINE NAME EDIT ---
+  const startNameEdit = () => {
+    setNameDraft(userMetadata.full_name || '');
+    setIsEditingName(true);
+  };
+
+  const cancelNameEdit = () => {
+    setIsEditingName(false);
+    setNameDraft('');
+  };
+
+  const saveNameEdit = () => {
+    const trimmed = nameDraft.trim().replace(/\s+/g, ' ').slice(0, NAME_MAX_LENGTH);
+    setIsEditingName(false);
+    setNameDraft('');
+    if (!trimmed || trimmed === userMetadata.full_name) return;
+    // updateMetadata is optimistic: the header updates immediately, then
+    // user_metadata and public.profiles are written in the background.
+    updateMetadata({ full_name: trimmed });
+  };
+
+  // --- PROFILE: AVATAR UPLOAD ---
+  // Uploads to the public `avatars` bucket under `<user id>/`. RLS on
+  // storage.objects restricts each user to their own folder — see the
+  // avatars migration.
+  const AVATAR_BUCKET = 'avatars';
+  const AVATAR_SIZE = 512;
+
+  // Centre-crops to a square and re-encodes as JPEG on device. A 12MP gallery
+  // photo is ~4MB; the avatar renders at 76px. This lands around 40–100KB.
+  const resizeImageToSquareJpeg = (file, size = AVATAR_SIZE) =>
+    new Promise((resolve, reject) => {
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        const sx = (img.naturalWidth - side) / 2;
+        const sy = (img.naturalHeight - side) / 2;
+        const out = Math.min(size, side);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = out;
+        canvas.height = out;
+        const ctx = canvas.getContext('2d');
+        // JPEG has no alpha. Paint the app background under transparent PNGs
+        // so they don't come out with a black box.
+        ctx.fillStyle = '#1A0F33';
+        ctx.fillRect(0, 0, out, out);
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, out, out);
+        URL.revokeObjectURL(objectUrl);
+
+        canvas.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error('Could not process image'))),
+          'image/jpeg',
+          0.85
+        );
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Unsupported image format'));
+      };
+      img.src = objectUrl;
+    });
+
+  const handleAvatarFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    // Reset so choosing the same file again still fires onChange.
+    e.target.value = '';
+    if (!file || !user) return;
+
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('Please choose an image file.');
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setAvatarError('That image is too large. Please pick one under 20 MB.');
+      return;
+    }
+
+    setAvatarError(null);
+    setAvatarUploading(true);
+    try {
+      const blob = await resizeImageToSquareJpeg(file);
+
+      // New filename on every change: the public URL changes with it, so
+      // neither Supabase's CDN nor the WebView image cache can serve the old
+      // picture. Previous files are cleaned up below.
+      const path = `${user.id}/avatar-${Date.now()}.jpg`;
+
+      const { error: uploadError } = await supabase.storage
+        .from(AVATAR_BUCKET)
+        .upload(path, blob, { contentType: 'image/jpeg', cacheControl: '3600', upsert: false });
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(path);
+      await updateMetadata({ avatar_url: publicUrl });
+
+      // Best-effort cleanup. If this fails the only cost is an orphaned file;
+      // the profile already points at the new one.
+      const { data: existing } = await supabase.storage.from(AVATAR_BUCKET).list(user.id);
+      const stale = (existing || [])
+        .map(f => `${user.id}/${f.name}`)
+        .filter(p => p !== path);
+      if (stale.length > 0) {
+        const { error: removeError } = await supabase.storage.from(AVATAR_BUCKET).remove(stale);
+        if (removeError) console.warn('Old avatar cleanup failed:', removeError);
+      }
+    } catch (err) {
+      console.error('Avatar upload failed:', err);
+      setAvatarError(
+        err?.message === 'Unsupported image format'
+          ? 'That image format isn\u2019t supported. Try a JPG or PNG.'
+          : 'Couldn\u2019t update your photo. Please try again.'
+      );
+    } finally {
+      setAvatarUploading(false);
+    }
   };
 
   const SUPPORT_EMAIL = 'darkcity.atelier@gmail.com';
@@ -1492,9 +1654,14 @@ export default function App() {
   const navigateTo = (view, tab = 'home') => {
     setCurrentView(view);
     if (view === 'main') setCurrentTab(tab);
-    // Tapping a nav tab always returns to the category list, never a stale
-    // drill-down from a previous visit.
+    // Tapping a nav tab always returns to that tab's top level — never a
+    // stale drill-down, open menu, or half-finished edit from a previous visit.
+    // (Only the nav bar calls this; closing a game uses setCurrentView('main'),
+    // so a Home drill-down survives opening and closing a novel.)
     setActiveAchievementCategory(null);
+    setActiveCategory(null);
+    setSortMenuOpen(false);
+    setIsEditingName(false);
     window.scrollTo(0, 0);
   };
 
@@ -1971,11 +2138,44 @@ const renderAuthEmail = () => (
     const renderHome = () => {
     const displayList = cloudGames.length > 0 ? cloudGames : MOCK_GAMES;
 
-    const categories = [
-      { title: 'Horror',  list: displayList.filter(g => g.genre?.toLowerCase().includes('horror')) },
-      { title: 'Action',   list: displayList.filter(g => g.genre?.toLowerCase().includes('action') || g.genre?.toLowerCase().includes('Scifi')) },
-      { title: 'Mystery', list: displayList.filter(g => g.genre?.toLowerCase().includes('mystery') || g.genre?.toLowerCase().includes('adventure')) },
-    ];
+    // Every list Home shows, built BEFORE the drill-down early return so each
+    // "View all" screen reads the exact list its rail came from.
+    const continueList = displayList
+      .filter(g => (g.progress || 0) > 0 && (g.progress || 0) < 100)
+      .sort((a, b) => new Date(b.lastPlayedAt || 0) - new Date(a.lastPlayedAt || 0));
+
+    // Same ranking as Search > Top Search (search_count, descending).
+    const trendingAll  = sortByTopSearch(displayList);
+    const trendingList = trendingAll.slice(0, 10);
+
+    const categories = GENRE_RAILS.map(rail => ({
+      key:   rail.title,
+      title: rail.title,
+      list:  displayList.filter(g => matchesGenre(g, rail.keywords)),
+    }));
+
+    // activeCategory holds one of these keys: 'continue', 'trending', or a
+    // genre title. The drill-down looks everything up here.
+    const categoryViews = {
+      continue: {
+        title: 'Continue your story',
+        list: continueList,
+        showProgress: true,
+        emptyText: 'No stories in progress right now.',
+      },
+      trending: {
+        title: 'Trending now',
+        list: trendingAll,
+        showProgress: false,
+        emptyText: 'No trending stories yet.',
+      },
+      ...Object.fromEntries(categories.map(c => [c.key, {
+        title: c.title,
+        list: c.list,
+        showProgress: false,
+        emptyText: `No ${c.title.toLowerCase()} stories yet.`,
+      }])),
+    };
 
     // Single entry point into game_detail so the view ping is never forgotten.
     // record_story_view dedupes per user/story/hour server-side, so calling it
@@ -2009,10 +2209,12 @@ const renderAuthEmail = () => (
       </div>
     );
 
-    // ---------- CATEGORY DRILL-DOWN (unchanged behaviour, restyled) ----------
-    // ---------- CATEGORY DRILL-DOWN ("View all" target) ----------
+    // ---------- CATEGORY DRILL-DOWN ("View all" target for every rail) ----------
     if (activeCategory) {
-      const activeList = categories.find(c => c.title === activeCategory)?.list || displayList;
+      const view = categoryViews[activeCategory] || {
+        title: activeCategory, list: [], showProgress: false, emptyText: 'Nothing here yet.',
+      };
+      const activeList = view.list;
 
       return (
         <div className="flex-1 min-h-0 flex flex-col relative bg-[#1A0F33] text-white overflow-hidden font-manrope">
@@ -2059,7 +2261,7 @@ const renderAuthEmail = () => (
                 className="font-fraunces font-bold text-white leading-[1.05] tracking-[-0.01em]"
                 style={{ fontSize: 'clamp(1.9rem, 8.4vw, 2.6rem)' }}
               >
-                {activeCategory}
+                {view.title}
               </h1>
               <p
                 className="font-manrope text-[#C2BBD4] mt-1 leading-[1.4]"
@@ -2113,7 +2315,25 @@ const renderAuthEmail = () => (
                         >
                           {game.title}
                         </h4>
+                        {view.showProgress && (
+                          <p
+                            className="font-manrope font-medium text-[#C2BBD4] mt-1.5"
+                            style={{ fontSize: 'clamp(0.65rem, 2.9vw, 0.78rem)' }}
+                          >
+                            {Math.min(100, Math.max(0, game.progress || 0))}% completed
+                          </p>
+                        )}
                       </div>
+
+                      {/* Full-bleed progress rail — same treatment as Library cards */}
+                      {view.showProgress && (
+                        <div className="w-full h-[4px] bg-white/10 flex-shrink-0">
+                          <div
+                            className="h-full bg-gradient-to-r from-[#A855F7] to-[#7C3AED] transition-all"
+                            style={{ width: `${Math.min(100, Math.max(0, game.progress || 0))}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -2130,7 +2350,7 @@ const renderAuthEmail = () => (
                   className="font-manrope text-[#C2BBD4] leading-[1.5]"
                   style={{ fontSize: 'clamp(0.85rem, 3.6vw, 1rem)' }}
                 >
-                  No {activeCategory.toLowerCase()} stories yet.
+                                    {view.emptyText}
                 </p>
               </div>
             )}
@@ -2147,18 +2367,7 @@ const renderAuthEmail = () => (
       [...displayList].sort((a, b) => (b.trendingScore || 0) - (a.trendingScore || 0))[0] ||
       MOCK_GAMES[0];
 
-    const continueList = displayList
-      .filter(g => (g.progress || 0) > 0 && (g.progress || 0) < 100)
-      .sort((a, b) => new Date(b.lastPlayedAt || 0) - new Date(a.lastPlayedAt || 0));
-
-    // trending_score is recomputed by pg_cron every 15 min. search_count is the
-    // tiebreaker so a cold table (all scores 0) still orders sensibly.
-    const trendingList = [...displayList]
-      .sort((a, b) =>
-        (b.trendingScore || 0) - (a.trendingScore || 0) ||
-        (b.search_count || 0) - (a.search_count || 0)
-      )
-      .slice(0, 10);
+    // continueList and trendingList are built at the top of renderHome.
 
     const featuredBookmarked = userMetadata.bookmarks.includes(featuredGame.id);
 
@@ -2293,7 +2502,7 @@ const renderAuthEmail = () => (
           {/* ---------- CONTINUE YOUR STORY ---------- */}
           {continueList.length > 0 && (
             <div className="mb-7">
-              <SectionHeader title="Continue your story" onViewAll={() => setCurrentTab('library')} />
+              <SectionHeader title="Continue your story" onViewAll={() => setActiveCategory('continue')} />
 
               <div className="space-y-2.5">
                 {continueList.slice(0, 3).map((game) => {
@@ -2348,7 +2557,7 @@ const renderAuthEmail = () => (
           {/* ---------- TRENDING NOW ---------- */}
           {trendingList.length > 0 && (
             <div className="mb-7">
-              <SectionHeader title="Trending now" onViewAll={() => setCurrentTab('search')} />
+              <SectionHeader title="Trending now" onViewAll={() => setActiveCategory('trending')} />
 
               <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1 snap-x">
                 {trendingList.map((game) => {
@@ -2393,44 +2602,44 @@ const renderAuthEmail = () => (
             </div>
           )}
 
-          {/* ---------- GENRE RAILS (existing View All -> activeCategory flow) ---------- */}
-          {categories.map((category, idx) => {
-            const list = category.list.length > 0 ? category.list : displayList;
-            return (
-              <div key={idx} className="mb-7">
-                <SectionHeader title={category.title} onViewAll={() => setActiveCategory(category.title)} />
+          {/* ---------- GENRE RAILS ---------- */}
+          {/* Rails with no matching stories are hidden rather than padded with
+              every novel — the old fallback made "Horror" show non-horror
+              stories on Home, then "No horror stories yet" on View all. */}
+          {categories.filter(c => c.list.length > 0).map((category) => (
+            <div key={category.key} className="mb-7">
+              <SectionHeader title={category.title} onViewAll={() => setActiveCategory(category.key)} />
 
-                <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1 snap-x">
-                  {list.map((game, i) => (
-                    <div
-                      key={game.id + '-' + i}
-                      onClick={() => openGame(game)}
-                      className="flex-shrink-0 w-[34vw] max-w-[140px] snap-start flex flex-col
-                                 rounded-2xl overflow-hidden cursor-pointer group
-                                 bg-gradient-to-b from-[#10082F] to-[#0A082B] border border-[#322253] shadow-lg shadow-black/50"
-                    >
-                      <div className="relative w-full aspect-[3/4] overflow-hidden">
-                        <img
-                          src={game.coverImage}
-                          alt={game.title}
-                          className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#15111F] to-transparent pointer-events-none" />
-                      </div>
-                      <div className="px-2.5 pt-2 pb-2.5">
-                        <h4
-                          className="font-fraunces font-bold text-white leading-tight truncate"
-                          style={{ fontSize: 'clamp(0.85rem, 3.7vw, 1rem)' }}
-                        >
-                          {game.title}
-                        </h4>
-                      </div>
+              <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1 snap-x">
+                {category.list.map((game, i) => (
+                  <div
+                    key={game.id + '-' + i}
+                    onClick={() => openGame(game)}
+                    className="flex-shrink-0 w-[34vw] max-w-[140px] snap-start flex flex-col
+                               rounded-2xl overflow-hidden cursor-pointer group
+                               bg-gradient-to-b from-[#10082F] to-[#0A082B] border border-[#322253] shadow-lg shadow-black/50"
+                  >
+                    <div className="relative w-full aspect-[3/4] overflow-hidden">
+                      <img
+                        src={game.coverImage}
+                        alt={game.title}
+                        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                      <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#15111F] to-transparent pointer-events-none" />
                     </div>
-                  ))}
-                </div>
+                    <div className="px-2.5 pt-2 pb-2.5">
+                      <h4
+                        className="font-fraunces font-bold text-white leading-tight truncate"
+                        style={{ fontSize: 'clamp(0.85rem, 3.7vw, 1rem)' }}
+                      >
+                        {game.title}
+                      </h4>
+                    </div>
+                  </div>
+                ))}
               </div>
-            );
-          })}
+            </div>
+          ))}
 
         </div>
       </div>
@@ -2440,9 +2649,7 @@ const renderAuthEmail = () => (
     const renderSearch = () => {
     const sourceList = cloudGames.length > 0 ? cloudGames : MOCK_GAMES;
 
-    const trendingSearches = [...sourceList]
-      .sort((a, b) => (b.search_count || 0) - (a.search_count || 0))
-      .slice(0, 3);
+    const trendingSearches = sortByTopSearch(sourceList).slice(0, 3);
 
     const results = searchQuery
       ? sourceList.filter(g => g.title.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -2552,6 +2759,12 @@ const renderAuthEmail = () => (
       { id: 'completed',   label: 'Completed' },
     ];
 
+    const SORT_OPTIONS = [
+      { id: 'recentlyAdded', label: 'Recently Added' },
+      { id: 'nameAZ',        label: 'Name A-Z' },
+      { id: 'nameZA',        label: 'Name Z-A' },
+    ];
+
     // progress is the single source of truth for the three non-"all" buckets:
     // 0 = bookmarked but never opened, 1-99 = in progress, 100 = finished.
     const matchesFilter = (g) => {
@@ -2588,44 +2801,52 @@ const renderAuthEmail = () => (
         </div>
 
         {/* ---------- EMPTY STATE ---------- */}
+        {/* Matched to the Moonlit Oath frame: art at ~58vw, title and copy
+            grouped tight, button ~75% wide with a lavender hairline border.
+            paddingBottom lifts the group slightly above true centre, which is
+            where the Figma frame places it. */}
         {isEmptyLibrary ? (
           <div
             className="relative z-10 flex-1 min-h-0 flex flex-col items-center justify-center text-center"
             style={{
-              paddingLeft:  'calc(env(safe-area-inset-left, 0px) + 2rem)',
-              paddingRight: 'calc(env(safe-area-inset-right, 0px) + 2rem)',
+              paddingLeft:   'calc(env(safe-area-inset-left, 0px) + 2rem)',
+              paddingRight:  'calc(env(safe-area-inset-right, 0px) + 2rem)',
+              paddingBottom: 'clamp(2rem, 9vh, 5rem)',
             }}
           >
             <img
               src={empLib}
               alt=""
               aria-hidden="true"
-              className="w-[min(34vw,250px)] h-[min(34vw,250px)] object-contain mb-5"
+              className="w-[min(58vw,260px)] h-[min(58vw,260px)] object-contain"
             />
 
             <h2
-              className="font-fraunces font-medium text-white leading-snug mb-8"
+              className="font-fraunces font-medium text-white leading-snug"
               style={{ fontSize: 'clamp(1.2rem, 5.4vw, 1.55rem)' }}
             >
               Your Library is Empty
             </h2>
-            <p
-                  className="font-manrope text-[#BCBCBC] mt-0.5 leading-[1]"
-                  style={{ fontSize: 'clamp(1rem, 3.5vw, 1rem)' }}
-                >
-                  Bookmark stories you love to find them here
-                </p>
 
-            <br/>    
+            {/* Explicit break so it always splits where the design does,
+                regardless of screen width. */}
+            <p
+              className="font-manrope text-[#C2BBD4] mt-1.5 leading-[1.45]"
+              style={{ fontSize: 'clamp(0.9rem, 3.9vw, 1rem)' }}
+            >
+              Bookmark stories you love
+              <br />
+              to find them here
+            </p>
+
             <button
               onClick={() => setCurrentTab('home')}
-              className="w-full max-w-[280px] min-h-[56px] flex items-center justify-center rounded-lg
-                         bg-gradient-to-r from-[#8A35FF] to-[#6B2DE2]
+              className="mt-8 w-full max-w-[310px] min-h-[56px] flex items-center justify-center rounded-lg
+                         bg-gradient-to-r from-[#8A35FF] to-[#6B2DE2] border border-[#C48DFF]/50
                          active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
-                         shadow-lg shadow-purple-900/40 transition-all
-                         
+                         shadow-lg shadow-purple-900/40 transition-all active:scale-[0.98]
                          font-manrope font-semibold text-white tracking-wide"
-              style={{ fontSize: 'clamp(1rem, 4.2vw, 1.15rem)' }}
+              style={{ fontSize: 'clamp(1.05rem, 4.5vw, 1.2rem)' }}
             >
               Browse Games
             </button>
@@ -2659,22 +2880,74 @@ const renderAuthEmail = () => (
                 </p>
               </div>
 
-              <div className="relative flex-shrink-0 mt-1">
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  className="appearance-none min-h-[38px] rounded-md
-                             bg-[#1A0F33]/70 backdrop-blur-md border border-[#9457EB]/50
-                             text-white font-manrope font-medium
-                             pl-4 pr-9 py-1.5 max-w-[42vw] truncate
-                             focus:outline-none focus:border-[#9457EB] cursor-pointer transition-colors"
+              {/* Sort — a real dropdown, not <select>. Android WebView renders
+                  a native <select> as a modal picker dialog, which is why this
+                  used to pop up a window. */}
+              {sortMenuOpen && (
+                // Invisible full-screen catcher: tapping anywhere outside the
+                // menu closes it (and swallows that tap, so a filter pill or
+                // card isn't triggered by the same touch).
+                <button
+                  type="button"
+                  aria-label="Close sort menu"
+                  onClick={() => setSortMenuOpen(false)}
+                  className="fixed inset-0 z-20 cursor-default"
+                />
+              )}
+              <div className="relative z-30 flex-shrink-0 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setSortMenuOpen(open => !open)}
+                  aria-haspopup="listbox"
+                  aria-expanded={sortMenuOpen}
+                  className={`flex items-center gap-2 min-h-[38px] rounded-md max-w-[42vw]
+                              bg-[#1A0F33]/70 backdrop-blur-md border
+                              text-white font-manrope font-medium
+                              pl-4 pr-3 py-1.5 transition-colors
+                              ${sortMenuOpen ? 'border-[#9457EB]' : 'border-[#9457EB]/50'}`}
                   style={{ fontSize: 'clamp(0.72rem, 3.1vw, 0.85rem)' }}
                 >
-                  <option className="bg-[#1A0F33] text-white" value="recentlyAdded">Recently Added</option>
-                  <option className="bg-[#1A0F33] text-white" value="nameAZ">Name A-Z</option>
-                  <option className="bg-[#1A0F33] text-white" value="nameZA">Name Z-A</option>
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white pointer-events-none" />
+                  <span className="truncate">
+                    {SORT_OPTIONS.find(o => o.id === sortBy)?.label}
+                  </span>
+                  <ChevronDown
+                    className={`w-4 h-4 flex-shrink-0 text-white transition-transform duration-200
+                                ${sortMenuOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+
+                {sortMenuOpen && (
+                  <div
+                    role="listbox"
+                    className="absolute right-0 top-full mt-1.5 w-max min-w-full py-1 rounded-md overflow-hidden
+                               bg-[#1A0F33]/95 backdrop-blur-md border border-[#9457EB]/50
+                               shadow-2xl shadow-black/60"
+                  >
+                    {SORT_OPTIONS.map(opt => {
+                      const selected = sortBy === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          onClick={() => { setSortBy(opt.id); setSortMenuOpen(false); }}
+                          className={`w-full flex items-center justify-between gap-4 px-4 py-2.5 text-left
+                                      font-manrope whitespace-nowrap transition-colors
+                                      ${selected
+                                        ? 'bg-[#9457EB]/20 text-white font-semibold'
+                                        : 'text-[#C2BBD4] font-medium hover:bg-white/[0.06] active:bg-white/[0.1]'}`}
+                          style={{ fontSize: 'clamp(0.72rem, 3.1vw, 0.85rem)' }}
+                        >
+                          {opt.label}
+                          {selected
+                            ? <Check className="w-4 h-4 flex-shrink-0 text-[#A855F7]" strokeWidth={2.5} />
+                            : <span className="w-4 h-4 flex-shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -3187,14 +3460,8 @@ const renderAuthEmail = () => (
   };
 
   const renderProfile = () => {
-    const handleNameEdit = () => {
-      const newName = prompt("Enter your new name:", userMetadata.full_name);
-      if (newName) updateMetadata({ full_name: newName });
-    };
-    const handlePicEdit = () => {
-      const newUrl = prompt("Enter a new image URL for your avatar:", userMetadata.avatar_url);
-      if (newUrl) updateMetadata({ avatar_url: newUrl });
-    };
+    // Name and avatar handlers live at component level (startNameEdit,
+    // saveNameEdit, cancelNameEdit, handleAvatarFileChange).
 
     // One shape for all three rows so the icon column, label baseline, and
     // chevron stay aligned regardless of label length.
@@ -3246,40 +3513,107 @@ const renderAuthEmail = () => (
           >
             <div className="flex items-center gap-4">
 
-              {/* Avatar + camera affordance */}
+              {/* Avatar + camera affordance. The file input is hidden and
+                  driven by the camera button, so the chrome stays ours while
+                  Android opens its own photo picker. No `capture` attribute:
+                  that would force the camera and skip the gallery. */}
               <div className="relative w-[19vw] max-w-[76px] aspect-square flex-shrink-0">
                 <img
                   src={userMetadata.avatar_url}
                   alt="avatar"
                   className="w-full h-full rounded-full object-cover border-2 border-[#9457EB]/60"
                 />
+
+                {avatarUploading && (
+                  <div className="absolute inset-0 rounded-full flex items-center justify-center bg-[#0B0B14]/65">
+                    <Loader2 className="w-6 h-6 text-[#C48DFF] animate-spin" />
+                  </div>
+                )}
+
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarFileChange}
+                  className="hidden"
+                />
                 <button
-                  onClick={handlePicEdit}
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={avatarUploading}
                   aria-label="Change profile photo"
                   className="absolute bottom-0 right-0 w-7 h-7 rounded-full flex items-center justify-center
-                             bg-[#2A1B4D] border border-[#9457EB] active:scale-90 transition-transform"
+                             bg-[#2A1B4D] border border-[#9457EB] active:scale-90 transition-transform
+                             disabled:opacity-60"
                 >
                   <Camera className="w-3.5 h-3.5 text-[#A855F7]" strokeWidth={2.25} />
                 </button>
               </div>
 
               <div className="flex-1 min-w-0">
-                {/* Name — Fraunces, the only display-font element on this screen */}
-                <div className="flex items-center gap-2 min-w-0">
-                  <h2
-                    className="font-fraunces font-bold text-white leading-[1.1] tracking-[-0.01em] truncate"
-                    style={{ fontSize: 'clamp(1.35rem, 6vw, 1.75rem)' }}
-                  >
-                    {userMetadata.full_name || 'User'}
-                  </h2>
-                  <button
-                    onClick={handleNameEdit}
-                    aria-label="Edit name"
-                    className="flex-shrink-0 p-1 -m-1 active:scale-90 transition-transform"
-                  >
-                    <Edit3 className="w-[18px] h-[18px] text-[#A855F7]" strokeWidth={2.25} />
-                  </button>
-                </div>
+                {/* Name — edits in place. Kept as plain JSX on purpose: an
+                    input wrapped in a component declared inside renderProfile
+                    (like ActionRow) would remount on every keystroke and
+                    close the Android keyboard after each letter. */}
+                {isEditingName ? (
+                  <div className="flex items-center gap-2 min-w-0">
+                    <input
+                      type="text"
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); saveNameEdit(); }
+                        if (e.key === 'Escape') cancelNameEdit();
+                      }}
+                      maxLength={NAME_MAX_LENGTH}
+                      autoFocus
+                      enterKeyHint="done"
+                      autoCapitalize="words"
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder="Your name"
+                      aria-label="Your name"
+                      className="flex-1 min-w-0 bg-transparent px-0 py-0.5
+                                 border-0 border-b-2 border-[#9457EB] focus:border-[#C48DFF] focus:outline-none
+                                 font-fraunces font-bold text-white leading-[1.1] tracking-[-0.01em]
+                                 placeholder:text-[#6B6484] transition-colors"
+                      style={{ fontSize: 'clamp(1.35rem, 6vw, 1.75rem)' }}
+                    />
+                    <button
+                      onClick={saveNameEdit}
+                      disabled={!nameDraft.trim()}
+                      aria-label="Save name"
+                      className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center
+                                 bg-gradient-to-r from-[#7C3AED] to-[#9457EB] shadow-lg shadow-purple-900/40
+                                 active:scale-90 transition-transform disabled:opacity-40"
+                    >
+                      <Check className="w-4 h-4 text-white" strokeWidth={3} />
+                    </button>
+                    <button
+                      onClick={cancelNameEdit}
+                      aria-label="Cancel editing name"
+                      className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center
+                                 bg-white/[0.04] border border-white/20 active:scale-90 transition-transform"
+                    >
+                      <X className="w-4 h-4 text-[#C2BBD4]" strokeWidth={2.5} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h2
+                      className="font-fraunces font-bold text-white leading-[1.1] tracking-[-0.01em] truncate"
+                      style={{ fontSize: 'clamp(1.35rem, 6vw, 1.75rem)' }}
+                    >
+                      {userMetadata.full_name || 'User'}
+                    </h2>
+                    <button
+                      onClick={startNameEdit}
+                      aria-label="Edit name"
+                      className="flex-shrink-0 p-1 -m-1 active:scale-90 transition-transform"
+                    >
+                      <Edit3 className="w-[18px] h-[18px] text-[#A855F7]" strokeWidth={2.25} />
+                    </button>
+                  </div>
+                )}
 
                 {/* Email — copy on tap, checkmark confirms */}
                 <button
@@ -3296,6 +3630,15 @@ const renderAuthEmail = () => (
                     ? <Check className="w-4 h-4 flex-shrink-0 text-green-400" strokeWidth={3} />
                     : <Copy className="w-4 h-4 flex-shrink-0 text-[#A855F7]" strokeWidth={2} />}
                 </button>
+
+                {avatarError && (
+                  <p
+                    className="font-manrope text-[#F87171] mt-1.5 leading-[1.4]"
+                    style={{ fontSize: 'clamp(0.7rem, 3vw, 0.8rem)' }}
+                  >
+                    {avatarError}
+                  </p>
+                )}
               </div>
             </div>
           </div>

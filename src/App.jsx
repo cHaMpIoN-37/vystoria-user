@@ -386,7 +386,13 @@ const NAME_MAX_LENGTH = 30;
 
 // One definition of "a signed-out, brand-new session". A factory, not a shared
 // object literal, so nothing can mutate the defaults for the next sign-in.
-const DEFAULT_AVATAR_URL = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop';
+//
+// The bundled logo, not a remote stock photo: it renders instantly, survives
+// offline, and never 404s on someone else's CDN. Vite rewrites this import to
+// a hashed asset path, so it is deliberately NOT written into the database —
+// the hash changes on every build. Absent avatar_url in profiles falls through
+// to this in syncMetadata, which is exactly what we want.
+const DEFAULT_AVATAR_URL = logoUrl;
 const makeDefaultMetadata = () => ({
   full_name: 'Player One',
   avatar_url: DEFAULT_AVATAR_URL,
@@ -394,6 +400,23 @@ const makeDefaultMetadata = () => ({
   reactions: {},
   stats: { gamesStarted: [], choicesMade: 0, playTimeMins: 0 }
 });
+
+// --- GUEST / TEST LOGIN ---
+// One switch, read at build time. Ship the test APK with
+// VITE_ENABLE_GUEST_LOGIN=true; leave it unset (or "false") for the
+// production build and the button never renders and the handler no-ops.
+// Belt and braces: also turn the provider off in the Supabase dashboard,
+// because the flag only hides the UI, it does not close the endpoint.
+const GUEST_MODE_ENABLED =
+  String(import.meta.env.VITE_ENABLE_GUEST_LOGIN ?? 'false').toLowerCase() === 'true';
+
+const GUEST_DEFAULT_NAME = 'Guest Player';
+
+// Supabase anonymous users are real, authenticated users with no email and
+// no email_confirmed_at. Every gate in this file that asks "is this account
+// confirmed?" has to ask this first, or a guest gets signed out on the very
+// next tick.
+const isGuestUser = (u) => u?.is_anonymous === true;
 
 export default function App() {
   const [currentView, setCurrentView] = useState('init');
@@ -412,7 +435,7 @@ export default function App() {
   const [authError, setAuthError] = useState(null);
   const [authMessage, setAuthMessage] = useState(null);
 
-  // --- GOOGLE SIGN-IN ---
+  //  // --- GOOGLE SIGN-IN ---
   // Separate from authLoading so the "Confirm" button on the email screen
   // doesn't spin while the Google Custom Tab is open.
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -427,6 +450,15 @@ export default function App() {
   // onAuthStateChange listener both defer to this; without it the listener
   // sees SIGNED_IN and drops a half-registered user straight into 'main'.
   const oauthInFlightRef = useRef(false);
+
+  // --- GUEST / TEST LOGIN ---
+  // Its own spinner so the Confirm and Google buttons stay idle.
+  const [guestLoading, setGuestLoading] = useState(false);
+  // Same contract as oauthInFlightRef: signInAnonymously() emits SIGNED_IN
+  // the instant the row is created, which is BEFORE handleGuestSignIn has
+  // polled for the profiles row. Without this the listener would race the
+  // handler, read a not-yet-visible profile and null the user back out.
+  const guestInFlightRef = useRef(false);
 
 
   const [resendCountdown, setResendCountdown] = useState(60);
@@ -768,6 +800,9 @@ export default function App() {
       // being exchanged, or the "New to Vystoria?" card on screen). Running
       // the gate now would sign out someone mid-signup.
       if (oauthInFlightRef.current) return;
+      // Same for a guest session being provisioned — handleGuestSignIn owns
+      // the transition until the profiles row is confirmed present.
+      if (guestInFlightRef.current) return;
 
       supabase.auth.getSession().then(async ({ data: { session } }) => {
         const sessionUser = session?.user;
@@ -777,11 +812,25 @@ export default function App() {
           return;
         }
 
+        // A guest is authenticated but has no email and therefore no
+        // email_confirmed_at. The profiles row is still mandatory — that
+        // remains the one true "is this account provisioned?" test.
+        const guest = isGuestUser(sessionUser);
+
+        // If the test build has since been rebuilt with guest mode off, an
+        // old guest session must not survive the upgrade.
+        if (guest && !GUEST_MODE_ENABLED) {
+          await supabase.auth.signOut();
+          setUser(null);
+          setCurrentView('splash');
+          return;
+        }
+
         // Belt and braces: a session can only exist post-confirmation, but if
         // one somehow does without a profiles row the user is NOT registered
         // and must not be dropped into the app.
         const profile = await fetchProfile(sessionUser.id);
-        if (!sessionUser.email_confirmed_at || !profile) {
+        if ((!guest && !sessionUser.email_confirmed_at) || !profile) {
           await supabase.auth.signOut();
           setUser(null);
           setCurrentView('splash');
@@ -794,6 +843,16 @@ export default function App() {
         // This is also the whole web path: there is no deep link on web, so
         // detectSessionInUrl restores the session and we land here on reload.
         if (!profile.onboarded_at) {
+          // A guest can never answer that card — their row is stamped
+          // onboarded_at by the trigger. An unstamped guest means the
+          // migration did not run; drop the session rather than trapping
+          // them behind a Google modal they have no way out of.
+          if (guest) {
+            await supabase.auth.signOut();
+            setUser(null);
+            setCurrentView('splash');
+            return;
+          }
           oauthInFlightRef.current = true;
           setPendingGoogleUser(sessionUser);
           setShowNewAccountModal(true);
@@ -811,8 +870,10 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const nextUser = session?.user ?? null;
 
-      // Never promote an unconfirmed user to "logged in" state.
-      if (nextUser && !nextUser.email_confirmed_at) {
+      // Never promote an unconfirmed user to "logged in" state. Guests are
+      // exempt: there is nothing to confirm, and the profiles check below
+      // still has to pass.
+      if (nextUser && !isGuestUser(nextUser) && !nextUser.email_confirmed_at) {
         setUser(null);
         return;
       }
@@ -821,6 +882,8 @@ export default function App() {
       // view transition. Letting this listener race it double-fetches the
       // profile and can flip to 'main' behind the card.
       if (oauthInFlightRef.current) return;
+      // Ditto handleGuestSignIn.
+      if (guestInFlightRef.current) return;
 
       if (nextUser) {
         const profile = await fetchProfile(nextUser.id);
@@ -912,7 +975,9 @@ export default function App() {
 
 
   const handleCopyEmail = () => {
-    if (!user?.email) return;
+    // Guests have no address to copy — the row renders as a plain label
+    // rather than a button in that case, but guard here too for stale state.
+    if (isGuestUser(user) || !user?.email) return;
     navigator.clipboard?.writeText(user.email);
     setEmailCopied(true);
     setTimeout(() => setEmailCopied(false), 1500);
@@ -1554,6 +1619,67 @@ export default function App() {
     }
   };
 
+  // ==========================================
+  // GUEST / TEST LOGIN
+  // ==========================================
+  // Not a fake user and not a shared hardcoded account — signInAnonymously()
+  // mints a genuine auth.users row with its own id and JWT. That matters:
+  // every RLS policy, every RPC (get_achievements, record_story_reaction,
+  // delete_user) and every user_progress write exercises the real production
+  // path, so a Play reviewer tapping this is testing the actual app. It also
+  // means two testers never collide in each other's save slots.
+  //
+  // The profiles row comes from the on_auth_user_anonymous trigger in
+  // 20260920_0001_guest_anonymous_profiles.sql, which stamps onboarded_at
+  // immediately — tapping this button IS the statement of intent, exactly as
+  // entering a correct OTP is. There is no "New to Vystoria?" card here.
+  const handleGuestSignIn = async () => {
+    if (!GUEST_MODE_ENABLED) return;
+    if (guestLoading || authLoading || googleLoading) return;
+
+    setGuestLoading(true);
+    setAuthError(null);
+    setAuthMessage(null);
+    // Set synchronously, before the await: the 2500ms bootstrap timer may
+    // already be counting down and must not run getSession() mid-flight.
+    guestInFlightRef.current = true;
+
+    try {
+      const { data, error } = await supabase.auth.signInAnonymously({
+        // full_name only. avatar_url is deliberately omitted so the profile
+        // row is born without one and syncMetadata falls through to
+        // DEFAULT_AVATAR_URL (the bundled logo). Storing a build-hashed asset
+        // path in Postgres would break on the next deploy.
+        options: { data: { full_name: GUEST_DEFAULT_NAME } },
+      });
+      if (error) throw error;
+
+      const guestUser = data?.session?.user;
+      if (!guestUser) throw new Error('Guest sign-in returned no session.');
+
+      // THE GATE, same as every other path. waitForProfile and not
+      // fetchProfile: the trigger commits with the insert, but a slow
+      // connection can still have us read before the row is visible.
+      const profile = await waitForProfile(guestUser.id);
+      if (!profile) {
+        await supabase.auth.signOut();
+        setUser(null);
+        throw new Error("We couldn't start a guest session. Please try again in a moment.");
+      }
+
+      // Hand off exactly like OTP and Google do. completeSignIn owns the
+      // reset, the welcome splash and the move to 'main'.
+      completeSignIn(guestUser, profile);
+    } catch (e) {
+      console.error('[vystoria] guest sign-in failed:', e);
+      setAuthError(e?.message || 'Guest sign-in failed. Please try again.');
+      setCurrentView('auth');
+    } finally {
+      guestInFlightRef.current = false;
+      setGuestLoading(false);
+    }
+  };
+
   // "Confirm" on the card. Stamping onboarded_at is what turns the row into a
   // real account — same client-side write path updateMetadata already uses.
   const handleConfirmNewGoogleAccount = async () => {
@@ -1908,7 +2034,7 @@ const renderAuthEmail = () => (
 
       <button
         onClick={handleAuthContinue}
-        disabled={authLoading || googleLoading}
+        disabled={authLoading || googleLoading || guestLoading}
         className="w-full mt-5 min-h-[52px] flex items-center justify-center rounded-xl
                    bg-gradient-to-r from-[#8A35FF] to-[#6B2DE2]
                    active:from-[#6D28D9] active:to-[#7C3AED] hover:from-[#8B5CF6] hover:to-[#A472F0]
@@ -1934,7 +2060,7 @@ const renderAuthEmail = () => (
 
       <button
         onClick={handleGoogleSignIn}
-        disabled={googleLoading || authLoading}
+        disabled={googleLoading || authLoading || guestLoading}
         className="w-full min-h-[52px] flex items-center justify-center gap-3 rounded-xl
                    bg-white active:bg-[#EFEFEF] hover:bg-[#F7F7F7] transition-colors
                    disabled:opacity-50 disabled:cursor-not-allowed
@@ -1950,6 +2076,43 @@ const renderAuthEmail = () => (
           </>
         )}
       </button>
+
+      {/* --- GUEST / TEST LOGIN ---
+          Test builds only: gated on VITE_ENABLE_GUEST_LOGIN, so the
+          production bundle never ships this button. Secondary treatment
+          (outlined, not gradient) so it reads as an escape hatch and never
+          competes with Confirm as the primary action. */}
+      {GUEST_MODE_ENABLED && (
+        <>
+          <button
+            onClick={handleGuestSignIn}
+            disabled={guestLoading || googleLoading || authLoading}
+            className="w-full mt-3 min-h-[52px] flex items-center justify-center gap-3 rounded-xl
+                       bg-white/[0.04] active:bg-white/[0.12] hover:bg-white/[0.08]
+                       border border-[#9457EB] transition-colors
+                       disabled:opacity-50 disabled:cursor-not-allowed
+                       font-manrope font-semibold text-white tracking-wide"
+            style={{ fontSize: 'clamp(0.95rem, 4vw, 1.05rem)' }}
+          >
+            {guestLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin text-white" />
+            ) : (
+              <>
+                <User className="w-5 h-5 text-[#C48DFF]" strokeWidth={2} />
+                <span>Continue as Guest</span>
+              </>
+            )}
+          </button>
+
+          <p
+            className="mt-2 text-center font-manrope text-[#B0A9C4] leading-[1.5]"
+            style={{ fontSize: 'clamp(0.7rem, 3vw, 0.78rem)' }}
+          >
+            Skip sign-in and play straight away. Guest progress lives on this
+            device only and is lost on log out.
+          </p>
+        </>
+      )}
 
       <p
         className="pt-10 text-center font-manrope text-[#B0A9C4] leading-[1.6]"
@@ -3697,21 +3860,35 @@ const renderAuthEmail = () => (
                   </div>
                 )}
 
-                {/* Email — copy on tap, checkmark confirms */}
-                <button
-                  onClick={handleCopyEmail}
-                  className="flex items-center gap-2 mt-1.5 min-w-0 w-full text-left group"
-                >
-                  <span
-                    className="font-manrope text-[#C2BBD4] truncate group-hover:text-white transition-colors"
-                    style={{ fontSize: 'clamp(0.78rem, 3.4vw, 0.9rem)' }}
+                {/* Email — copy on tap, checkmark confirms. A guest has no
+                    address, so it becomes a static label: no copy icon, no
+                    tap target, and above all no misleading fallback address. */}
+                {isGuestUser(user) ? (
+                  <div className="flex items-center gap-2 mt-1.5 min-w-0 w-full">
+                    <span
+                      className="font-manrope text-[#C2BBD4] truncate"
+                      style={{ fontSize: 'clamp(0.78rem, 3.4vw, 0.9rem)' }}
+                    >
+                      Guest session — not linked to an account
+                    </span>
+                    <Lock className="w-4 h-4 flex-shrink-0 text-[#A855F7]" strokeWidth={2} />
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleCopyEmail}
+                    className="flex items-center gap-2 mt-1.5 min-w-0 w-full text-left group"
                   >
-                    {user?.email || 'player@darkcity.com'}
-                  </span>
-                  {emailCopied
-                    ? <Check className="w-4 h-4 flex-shrink-0 text-green-400" strokeWidth={3} />
-                    : <Copy className="w-4 h-4 flex-shrink-0 text-[#A855F7]" strokeWidth={2} />}
-                </button>
+                    <span
+                      className="font-manrope text-[#C2BBD4] truncate group-hover:text-white transition-colors"
+                      style={{ fontSize: 'clamp(0.78rem, 3.4vw, 0.9rem)' }}
+                    >
+                      {user?.email || 'player@darkcity.com'}
+                    </span>
+                    {emailCopied
+                      ? <Check className="w-4 h-4 flex-shrink-0 text-green-400" strokeWidth={3} />
+                      : <Copy className="w-4 h-4 flex-shrink-0 text-[#A855F7]" strokeWidth={2} />}
+                  </button>
+                )}
 
                 {avatarError && (
                   <p

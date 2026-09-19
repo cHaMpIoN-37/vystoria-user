@@ -384,6 +384,17 @@ const sortByTopSearch = (list) =>
 
 const NAME_MAX_LENGTH = 30;
 
+// One definition of "a signed-out, brand-new session". A factory, not a shared
+// object literal, so nothing can mutate the defaults for the next sign-in.
+const DEFAULT_AVATAR_URL = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop';
+const makeDefaultMetadata = () => ({
+  full_name: 'Player One',
+  avatar_url: DEFAULT_AVATAR_URL,
+  bookmarks: [],
+  reactions: {},
+  stats: { gamesStarted: [], choicesMade: 0, playTimeMins: 0 }
+});
+
 export default function App() {
   const [currentView, setCurrentView] = useState('init');
   const [currentTab, setCurrentTab] = useState('home');
@@ -497,13 +508,7 @@ export default function App() {
     }
   };
 
-  const [userMetadata, setUserMetadata] = useState({
-    full_name: 'Player One',
-    avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop',
-    bookmarks: [],
-    reactions: {},
-    stats: { gamesStarted: [], choicesMade: 0, playTimeMins: 0 }
-  });
+    const [userMetadata, setUserMetadata] = useState(makeDefaultMetadata());
 
 
   //627={authError && <p className="text-red-400 text-xs text-left">{authError}</p>}
@@ -725,14 +730,15 @@ export default function App() {
   const syncMetadata = async (activeUser, profile = null) => {
     if (!activeUser) return;
     const meta = activeUser.user_metadata || {};
+    const defaults = makeDefaultMetadata();
     setUserMetadata({
       // profiles is the source of truth for identity fields; user_metadata
       // still carries gameplay state (bookmarks / reactions / stats).
-      full_name: profile?.full_name || meta.full_name || 'Player One',
-      avatar_url: profile?.avatar_url || meta.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop',
-      bookmarks: meta.bookmarks || [],
-      reactions: meta.reactions || {},
-      stats: meta.stats || { gamesStarted: [], choicesMade: 0, playTimeMins: 0 }
+      full_name: profile?.full_name || meta.full_name || defaults.full_name,
+      avatar_url: profile?.avatar_url || meta.avatar_url || defaults.avatar_url,
+      bookmarks: meta.bookmarks || defaults.bookmarks,
+      reactions: meta.reactions || defaults.reactions,
+      stats: meta.stats || defaults.stats
     });
   };
 
@@ -1343,9 +1349,68 @@ export default function App() {
     }
   };
 
+  // --- SESSION RESET ---
+  // App is one long-lived component: signing out doesn't unmount it, so every
+  // piece of "where you are and what you were doing" survives an auth change.
+  // That is why logging out on Profile and signing straight back in resumed on
+  // Profile, modal and all. Every sign-in and every sign-out runs this, so a
+  // session always starts from a clean Home screen.
+  //
+  // currentView is deliberately NOT touched here — the callers own it
+  // (completeSignIn -> 'welcome' -> 'main', handleLogout -> 'splash').
+  const resetSessionState = () => {
+    // Navigation
+    setCurrentTab('home');
+    setActiveCategory(null);
+    setActiveAchievementCategory(null);
+    setSelectedGame(null);
+
+    // Modals and transient UI
+    setShowLogoutModal(false);
+    setShowDeleteModal(false);
+    setShowAccNotFound(false);
+    setSortMenuOpen(false);
+    setIsEditingName(false);
+    setNameDraft('');
+    setAvatarUploading(false);
+    setAvatarError(null);
+    setEmailCopied(false);
+    setSupportCopied(false);
+    setConfirmSaveIdx(null);
+
+    // Lists and filters
+    setSearchQuery('');
+    setSortBy('recentlyAdded');
+    setLibraryFilter('all');
+
+    // Engine — a story left open belongs to the previous session
+    setStoryData(null);
+    setCurrentSceneId(null);
+    setSequenceIndex(0);
+    setDialogueIndex(0);
+    setPlayerState('main_menu');
+    setPlayerError(null);
+    setSaveSlots(Array(8).fill(null));
+    setStoryEndings({ reached: [], total: 0 });
+    visitedScenesRef.current = new Set();
+    visitFlushStoryRef.current = null;
+
+    // Per-account data — one account's library, badges, name or avatar must
+    // never paint behind another account's sign-in.
+    setCloudGames([]);
+    setAchievements([]);
+    setUserMetadata(makeDefaultMetadata());
+
+    window.scrollTo(0, 0);
+  };
+
   // The single hand-off into the app, shared by the OTP path and the Google
   // path. Nothing else may call setCurrentView('welcome').
   const completeSignIn = (sessionUser, profile) => {
+    // Wipe the previous session first, then layer this user on top — otherwise
+    // syncMetadata's values would be cleared by the reset.
+    resetSessionState();
+
     setUser(sessionUser);
     syncMetadata(sessionUser, profile);
     setAuthLoading(false);
@@ -1356,6 +1421,9 @@ export default function App() {
     oauthInFlightRef.current = false;
     setCurrentView('welcome');
     setTimeout(() => {
+      // Repeated on purpose: nothing between the welcome splash and here is
+      // allowed to have moved the tab.
+      setCurrentTab('home');
       setCurrentView('main');
       fetchCloudGames(sessionUser);
     }, 1600);
@@ -1632,10 +1700,24 @@ export default function App() {
   }, []);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    // Clear local state BEFORE the network call. signOut() hits the API, and if
+    // it rejects (offline, already-expired session) every line after the await
+    // is skipped — which is how the confirm modal stayed on screen with the app
+    // still sitting on Profile.
+    resetSessionState();
     setUser(null);
-    setShowLogoutModal(false);
     setCurrentView('splash');
+
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('signOut failed, clearing local session instead:', err);
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch (localErr) {
+        console.error('local signOut failed:', localErr);
+      }
+    }
   };
 
   const handleDeleteAccount = async () => {

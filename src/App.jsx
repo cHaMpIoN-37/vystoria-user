@@ -284,6 +284,37 @@ const REGISTRATION_POLL_DELAY_MS = 400;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Resolves the portrait URL for one dialogue line.
+// The creator publishes characters as { name: { expression: url } }, but older
+// stories stored { name: url }. Both shapes are handled here. Falls back from
+// the requested expression to neutral, then to any variant that has a URL.
+// Speaker lookup ignores case and stray whitespace so "altan " still matches.
+// Returns null when nothing usable exists so the engine renders no <img> at
+// all instead of a broken-image icon.
+const pickCharacterPortrait = (characters, speaker, expression) => {
+  if (!characters || !speaker) return null;
+
+  let entry = characters[speaker];
+  if (entry === undefined) {
+    const wanted = String(speaker).trim().toLowerCase();
+    const key = Object.keys(characters).find(k => k.trim().toLowerCase() === wanted);
+    entry = key !== undefined ? characters[key] : undefined;
+  }
+  if (!entry) return null;
+
+  if (typeof entry === 'string') return entry;          // legacy single-portrait shape
+  if (typeof entry !== 'object') return null;
+
+  const wantedExpr = String(expression || 'neutral').trim().toLowerCase();
+  const preferred = entry[expression] || entry[wantedExpr] || entry.neutral;
+  if (typeof preferred === 'string' && preferred) return preferred;
+
+  for (const key of Object.keys(entry)) {
+    if (typeof entry[key] === 'string' && entry[key]) return entry[key];
+  }
+  return null;
+};
+
 // The auth endpoints live on the FastAPI backend, not on Supabase — see the
 // deferred-signup note in server.py. Trailing slash stripped so
 // `${API_BASE_URL}/auth/...` can't produce a double slash.
@@ -349,6 +380,116 @@ const computeCompletion = ({ endingsReached = [], totalEndings = 0, scenePercent
   const endingsPercent = total > 0 ? Math.floor((reached / total) * 100) : 0;
   const floorPercent   = Math.max(0, Math.round(scenePercent || 0));
   return Math.min(99, Math.max(endingsPercent, floorPercent));
+};
+
+// ---------------------------------------------------------------------------
+// STORY STATE (Phase 3). Twin of the "4b. STORY STATE" section in the
+// backend — evaluate_condition / apply_effects / sanitize_effects there must
+// behave exactly like evalCondition / applyEffects / sanitizeEffects here.
+// A story with no `state` block is a legacy story: every helper below is a
+// no-op for it, so it plays exactly as before.
+// ---------------------------------------------------------------------------
+const STATE_NUMERIC_KINDS = new Set(['stat', 'relationship', 'clock']);
+const STATE_BOOLEAN_KINDS = new Set(['flag', 'milestone']);
+
+const getStateVars = (story) =>
+  (Array.isArray(story?.state?.variables) ? story.state.variables : []).filter(v => v && typeof v.id === 'string');
+
+const storyHasState = (story) => getStateVars(story).length > 0;
+
+const isStateInt = (v) => typeof v === 'number' && Number.isInteger(v);
+
+const clampStateValue = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+const buildInitialState = (story) => {
+  const out = {};
+  for (const v of getStateVars(story)) {
+    if (STATE_NUMERIC_KINDS.has(v.kind)) {
+      const lo = isStateInt(v.min) ? v.min : 0;
+      const hi = isStateInt(v.max) ? v.max : lo;
+      out[v.id] = clampStateValue(isStateInt(v.initial) ? v.initial : lo, lo, hi);
+    } else if (STATE_BOOLEAN_KINDS.has(v.kind)) {
+      out[v.id] = v.initial === true;
+    }
+  }
+  return out;
+};
+
+// A save/autosave may come from an older version of the story (the creator
+// republished with a changed declaration). Keep every value that still fits
+// the current declaration, default the rest.
+const sanitizeLoadedState = (story, raw) => {
+  const out = buildInitialState(story);
+  if (!raw || typeof raw !== 'object') return out;
+  for (const v of getStateVars(story)) {
+    const val = raw[v.id];
+    if (STATE_NUMERIC_KINDS.has(v.kind) && isStateInt(val)) out[v.id] = clampStateValue(val, v.min, v.max);
+    else if (STATE_BOOLEAN_KINDS.has(v.kind) && typeof val === 'boolean') out[v.id] = val;
+  }
+  return out;
+};
+
+const applyEffects = (story, state, effects) => {
+  if (!effects || typeof effects !== 'object') return state;
+  const byId = Object.fromEntries(getStateVars(story).map(v => [v.id, v]));
+  const out = { ...state };
+  for (const [id, val] of Object.entries(effects)) {
+    const v = byId[id];
+    if (!v || !(id in out)) continue;
+    if (STATE_BOOLEAN_KINDS.has(v.kind)) {
+      if (typeof val === 'boolean') out[id] = val;
+    } else if (isStateInt(val)) {
+      out[id] = clampStateValue(out[id] + val, v.min, v.max);
+    }
+  }
+  return out;
+};
+
+const stateSameTypedEqual = (a, b) => (typeof a === 'boolean') === (typeof b === 'boolean') && a === b;
+
+// null/undefined = always true; anything malformed = false.
+const evalCondition = (state, cond, depth = 0) => {
+  if (cond === null || cond === undefined) return true;
+  if (typeof cond !== 'object' || Array.isArray(cond) || depth > 6) return false;
+  if (Array.isArray(cond.all)) return cond.all.every(c => evalCondition(state, c, depth + 1));
+  if (Array.isArray(cond.any)) return cond.any.some(c => evalCondition(state, c, depth + 1));
+  const { var: id, op, value: b } = cond;
+  if (typeof id !== 'string' || typeof op !== 'string' || !state || !(id in state)) return false;
+  const a = state[id];
+  if (op === '==') return stateSameTypedEqual(a, b);
+  if (op === '!=') return !stateSameTypedEqual(a, b);
+  if (!isStateInt(a) || !isStateInt(b)) return false;
+  if (op === '>=') return a >= b;
+  if (op === '<=') return a <= b;
+  if (op === '>') return a > b;
+  if (op === '<') return a < b;
+  return false;
+};
+
+const formatCondition = (cond) => {
+  if (cond === null || cond === undefined) return 'always';
+  const wrap = (c) => (c && (c.all || c.any) ? `(${formatCondition(c)})` : formatCondition(c));
+  if (Array.isArray(cond.all)) return cond.all.map(wrap).join(' AND ');
+  if (Array.isArray(cond.any)) return cond.any.map(wrap).join(' OR ');
+  return `${cond.var} ${cond.op} ${typeof cond.value === 'boolean' ? String(cond.value) : cond.value}`;
+};
+
+// The options the player is actually offered. If a state somehow locks
+// every option, fail open and show them all — a soft-lock is worse than a
+// choice the story didn't strictly intend.
+const getVisibleChoices = (scene, state) => {
+  const all = Array.isArray(scene?.choices) ? scene.choices : [];
+  const visible = all.filter(c => evalCondition(state, c?.condition));
+  return visible.length ? visible : all;
+};
+
+// Where a scene with no choices goes next: first route whose condition
+// passes, otherwise next_scene_default (which may be empty = an ending).
+const resolveNextSceneId = (scene, state) => {
+  for (const r of (Array.isArray(scene?.routes) ? scene.routes : [])) {
+    if (r?.next_scene && evalCondition(state, r.condition)) return r.next_scene;
+  }
+  return scene?.next_scene_default || null;
 };
 
 // --- HOME RAILS ---
@@ -652,6 +793,87 @@ export default function App() {
   }, [currentSceneId, currentView, selectedGame]);
   const [sequenceIndex, setSequenceIndex] = useState(0);
   const [playerError, setPlayerError] = useState(null);
+
+  // --- STORY STATE + CROSS-DEVICE AUTOSAVE (Phase 3) ---
+  // Variables for the open story ({} for a legacy story with no state).
+  const [storyState, setStoryState] = useState({});
+  // The autosave for the open story, already validated against its CURRENT
+  // file: { sceneId, sequenceIndex, state } or null. Drives "Continue".
+  const [autosave, setAutosave] = useState(null);
+  // Only a run the player actually started, continued or loaded in this
+  // session may overwrite the cloud autosave. Merely opening a story (which
+  // parks the engine on its main menu) must never clobber progress made on
+  // another device.
+  const autosaveArmedRef = useRef(false);
+  const autosaveTimerRef = useRef(null);
+  // Latest position, read at write time so a delayed or on-exit write always
+  // saves where the player really is.
+  const engineSnapshotRef = useRef(null);
+  engineSnapshotRef.current = {
+    storyId: selectedGame?.isCloud ? selectedGame.id : null,
+    sceneId: currentSceneId,
+    sequenceIndex,
+    state: storyState,
+  };
+
+  const writeAutosave = async () => {
+    clearTimeout(autosaveTimerRef.current);
+    const snap = engineSnapshotRef.current;
+    if (!autosaveArmedRef.current || !user || !snap?.storyId || !snap.sceneId) return;
+    try {
+      const { error } = await supabase.from('story_autosaves').upsert({
+        user_id: user.id,
+        story_id: snap.storyId,
+        scene_id: snap.sceneId,
+        sequence_index: snap.sequenceIndex || 0,
+        story_state: snap.state || {},
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id,story_id' });
+      if (error) throw error;
+    } catch (err) {
+      console.error('autosave failed:', err);
+    }
+  };
+
+  // A finished playthrough has nothing to continue, so the next open starts
+  // clean on every device.
+  const clearAutosave = () => {
+    clearTimeout(autosaveTimerRef.current);
+    autosaveArmedRef.current = false;
+    setAutosave(null);
+    if (!user || !selectedGame?.isCloud) return;
+    supabase.from('story_autosaves').delete().eq('user_id', user.id).eq('story_id', selectedGame.id)
+      .then(({ error }) => { if (error) console.error('clearing autosave failed:', error); });
+  };
+
+  // Scene-level autosave, debounced. Line-by-line taps don't write; the exit
+  // and background flushes below capture the exact line.
+  useEffect(() => {
+    if (currentView !== 'engine' || !autosaveArmedRef.current) return;
+    clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(writeAutosave, 1200);
+    return () => clearTimeout(autosaveTimerRef.current);
+  }, [currentSceneId, storyState, currentView]);
+
+  // Flush when the app is backgrounded or the phone locks — the moment a
+  // player is most likely to pick the story up on another device.
+  useEffect(() => {
+    if (currentView !== 'engine') return;
+    const onVisibility = () => { if (document.visibilityState === 'hidden') writeAutosave(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    let handle = null;
+    let cancelled = false;
+    if (IS_NATIVE) {
+      CapacitorApp.addListener('appStateChange', ({ isActive }) => { if (!isActive) writeAutosave(); })
+        .then(h => { if (cancelled) h.remove(); else handle = h; })
+        .catch(() => {});
+    }
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (handle) handle.remove();
+    };
+  }, [currentView]);
 
   const [sortBy, setSortBy] = useState('recentlyAdded');
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
@@ -1166,9 +1388,35 @@ export default function App() {
       // The ending COUNT comes from the file (always current, even if the
       // creator republished with a new branch); the endings REACHED come from
       // the player's row. Together they are the completion number.
+      // Cross-device resume: the autosave written by whichever device this
+      // account last played on. Validated against the CURRENT story file —
+      // the creator may have republished and dropped that scene or changed
+      // the variables. A missing table (migration not yet run) or any read
+      // error just means no Continue button, never a failed open.
+      let resumeSave = null;
+      try {
+        const { data: saveRow, error: saveErr } = await supabase
+          .from('story_autosaves')
+          .select('scene_id, sequence_index, story_state')
+          .eq('user_id', user.id)
+          .eq('story_id', selectedGame.id)
+          .maybeSingle();
+        if (saveErr) throw saveErr;
+        const savedScene = saveRow && json.scenes.find(s => s.id === saveRow.scene_id);
+        if (savedScene) {
+          resumeSave = {
+            sceneId: savedScene.id,
+            sequenceIndex: Math.min(Math.max(0, Number(saveRow.sequence_index) || 0), savedScene.sequence?.length || 0),
+            state: sanitizeLoadedState(json, saveRow.story_state),
+          };
+        }
+      } catch (autosaveErr) {
+        console.error('Could not read autosave:', autosaveErr);
+      }
+
       const totalEndings   = countStoryEndings(json);
       const endingsReached = Array.isArray(progressData?.endings_reached) ? progressData.endings_reached : [];
-      const resumeSceneId  = progressData?.current_scene_id || json.starting_scene || json.scenes[0].id;
+      const resumeSceneId  = resumeSave?.sceneId || progressData?.current_scene_id || json.starting_scene || json.scenes[0].id;
       const resumePercent  = calculateProgress(json, resumeSceneId);
       const syncedPercent  = computeCompletion({ endingsReached, totalEndings, scenePercent: resumePercent });
 
@@ -1177,6 +1425,9 @@ export default function App() {
       setStoryData(json);
       setCurrentSceneId(resumeSceneId);
       setSequenceIndex(0);
+      setStoryState(buildInitialState(json));
+      setAutosave(resumeSave);
+      autosaveArmedRef.current = false;   // armed only by Start / Continue / Load
       setPlayerState('main_menu');
       setCurrentView('engine');
 
@@ -1237,7 +1488,7 @@ export default function App() {
     if (!user || !selectedGame) return;
     try {
       const newSlots = [...saveSlots];
-      newSlots[idx] = { sceneId: currentSceneId, date: new Date().toLocaleString() };
+      newSlots[idx] = { sceneId: currentSceneId, sequenceIndex, state: storyState, date: new Date().toLocaleString() };
       setSaveSlots(newSlots);
 
       // Saving must not be able to write 100 just because the player parked on
@@ -1263,15 +1514,48 @@ export default function App() {
     }
   };
 
+  // Every scene change goes through here, so a scene's arrival effects are
+  // applied exactly once per arrival — never from a render or an effect hook.
+  const enterScene = (sceneId, baseState) => {
+    const scene = storyData?.scenes?.find(s => s.id === sceneId);
+    setStoryState(scene ? applyEffects(storyData, baseState, scene.effects) : baseState);
+    setCurrentSceneId(sceneId);
+    setSequenceIndex(0);
+  };
+
   const handleLoadSlot = (idx) => {
     const slot = saveSlots[idx];
-    if (slot && slot.sceneId) {
-      setCurrentSceneId(slot.sceneId);
-      setSequenceIndex(0);
-      visitedScenesRef.current = new Set();
-      visitFlushStoryRef.current = selectedGame.id;
-      setPlayerState('playing');
+    if (!slot || !slot.sceneId) return;
+    const scene = storyData?.scenes?.find(s => s.id === slot.sceneId);
+    if (!scene) {
+      setPlayerError("This save points to a part of the story that no longer exists.");
+      return;
     }
+    if (slot.state) {
+      // The saved state already includes that scene's arrival effects.
+      setStoryState(sanitizeLoadedState(storyData, slot.state));
+      setCurrentSceneId(slot.sceneId);
+      setSequenceIndex(Math.min(Math.max(0, Number(slot.sequenceIndex) || 0), scene.sequence?.length || 0));
+    } else {
+      // Saved before story variables existed: start the variables fresh.
+      enterScene(slot.sceneId, buildInitialState(storyData));
+    }
+    visitedScenesRef.current = new Set();
+    visitFlushStoryRef.current = selectedGame.id;
+    autosaveArmedRef.current = true;
+    setPlayerState('playing');
+  };
+
+  // Resume from the cloud autosave (possibly written on another device).
+  const continueFromAutosave = () => {
+    if (!autosave) return;
+    setStoryState(autosave.state);
+    setCurrentSceneId(autosave.sceneId);
+    setSequenceIndex(autosave.sequenceIndex);
+    visitedScenesRef.current = new Set();
+    visitFlushStoryRef.current = selectedGame?.id || null;
+    autosaveArmedRef.current = true;
+    setPlayerState('playing');
   };
 
   // --- FIXED: no longer falls back to scenes[0] when a link target is
@@ -1283,22 +1567,31 @@ export default function App() {
     const currentScene = storyData.scenes?.find(s => s.id === currentSceneId) || storyData.scenes?.[0];
     if (!currentScene) return;
 
-    const sequenceLength = currentScene.sequence?.length || 1;
-    const isEndOfSeq = sequenceIndex >= sequenceLength - 1;
+    const sequenceLength = currentScene.sequence?.length || 0;
     const hasChoices = currentScene.choices && currentScene.choices.length > 0;
-    const nextSceneExists = storyData.scenes?.some(s => s.id === currentScene.next_scene_default);
 
-    if (!isEndOfSeq) {
+    if (sequenceIndex < sequenceLength - 1) {
       setSequenceIndex(prev => prev + 1);
       return;
     }
 
-    if (currentScene.next_scene_default && nextSceneExists) {
-      setCurrentSceneId(currentScene.next_scene_default);
-      setSequenceIndex(0);
+    // FIX: choices now appear AFTER the last line, not in place of it — the
+    // old test (index >= length - 1) meant the line right before every
+    // choice was never shown. sequenceIndex === length = "choosing".
+    if (hasChoices) {
+      if (sequenceIndex < sequenceLength) setSequenceIndex(sequenceLength);
       return;
     }
 
+    // First conditional route that passes, else next_scene_default.
+    const nextSceneId = resolveNextSceneId(currentScene, storyState);
+    if (nextSceneId && storyData.scenes?.some(s => s.id === nextSceneId)) {
+      enterScene(nextSceneId, storyState);
+      return;
+    }
+
+    // Nowhere left to go: this is an ending. (hasChoices is always false
+    // here — kept as the guard so the block reads as before.)
     if (!hasChoices) {
       if (user && selectedGame) {
         visitedScenesRef.current.add(currentSceneId);
@@ -1350,6 +1643,7 @@ export default function App() {
           });
         });
       }
+      clearAutosave();
       setPlayerState('story_end');
     }
   };
@@ -1359,8 +1653,9 @@ export default function App() {
   // completed_at is already set), so the client can call it unconditionally
   // and never has to work out whether this is a first run or a replay.
   const startNewPlaythrough = () => {
-    setSequenceIndex(0);
-    setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id);
+    setPlayerError(null);
+    autosaveArmedRef.current = true;
+    enterScene(storyData?.starting_scene || storyData?.scenes?.[0]?.id, buildInitialState(storyData));
     setPlayerState('playing');
 
     if (user && selectedGame?.isCloud) {
@@ -1370,20 +1665,23 @@ export default function App() {
   };
 
   // Leaving the engine is the main flush point — most sessions end here rather
-  // than at an ending.
+  // than at an ending. (This existed before but no button called it, so
+  // exiting mid-story never flushed scene visits.)
   const exitToDetail = () => {
     flushSceneVisits();
+    writeAutosave();
+    autosaveArmedRef.current = false;
     setCurrentView('game_detail');
   };
 
   // --- FIXED: validates the choice's target scene actually exists before
   // navigating, instead of blindly jumping (which previously fell through
   // to scene[0] via the lookup fallback elsewhere in the engine).
-  const handleChoice = (nextSceneId) => {
+  const handleChoice = (choice) => {
+    const nextSceneId = choice?.next_scene;
     const exists = nextSceneId && storyData?.scenes?.some(s => s.id === nextSceneId);
     if (exists) {
-      setCurrentSceneId(nextSceneId);
-      setSequenceIndex(0);
+      enterScene(nextSceneId, applyEffects(storyData, storyState, choice.effects));
       updateMetadata({ stats: { ...userMetadata.stats, choicesMade: (userMetadata.stats.choicesMade || 0) + 1 }});
     } else {
       setPlayerError("Game Over: Reached a dead end.");
@@ -1459,6 +1757,10 @@ export default function App() {
     setStoryEndings({ reached: [], total: 0 });
     visitedScenesRef.current = new Set();
     visitFlushStoryRef.current = null;
+    setStoryState({});
+    setAutosave(null);
+    autosaveArmedRef.current = false;
+    clearTimeout(autosaveTimerRef.current);
 
     // Per-account data — one account's library, badges, name or avatar must
     // never paint behind another account's sign-in.
@@ -4261,17 +4563,26 @@ const renderAuthEmail = () => (
 
     const currentScene = storyData.scenes?.find(s => s.id === currentSceneId) || storyData.scenes?.[0] || {};
     const sequenceList = currentScene.sequence || [];
-    const currentSequenceBlock = sequenceList[sequenceIndex] || {};
-    const isEndOfSequence = sequenceIndex >= sequenceList.length - 1;
+    // sequenceIndex === sequenceList.length means "past the last line, now
+    // choosing". The last speaker's block stays current so their portrait
+    // stays up while the player decides.
+    const lineIndex = Math.min(sequenceIndex, Math.max(0, sequenceList.length - 1));
+    const currentSequenceBlock = sequenceList[lineIndex] || {};
+    const showingChoices = !!(currentScene.choices && currentScene.choices.length > 0) && sequenceIndex >= sequenceList.length;
+    // Options gated by a condition the player hasn't met are hidden here
+    // (the creator's test build shows them greyed out instead).
+    const offeredChoices = getVisibleChoices(currentScene, storyState);
 
     const sceneBgUrl = selectedGame?.assets?.backgrounds?.[currentScene.background];
     const engineBg = sceneBgUrl
       || selectedGame?.bgImage
       || 'https://images.unsplash.com/photo-1599839619722-39751411ea63?q=80&w=1200&auto=format&fit=crop';
 
-    const portraitUrl = currentSequenceBlock.speaker
-      ? selectedGame?.assets?.characters?.[currentSequenceBlock.speaker]
-      : null;
+    const portraitUrl = pickCharacterPortrait(
+      selectedGame?.assets?.characters,
+      currentSequenceBlock.speaker,
+      currentSequenceBlock.expression
+    );
 
     // In landscape the viewport is WIDE and SHORT (~868x411 on a 1080p phone),
     // so height is the binding constraint, not width. Every size below keys
@@ -4317,9 +4628,12 @@ const renderAuthEmail = () => (
                </div>
 
                <div className="w-full max-w-[min(78vw,340px)] space-y-[clamp(0.6rem,2.4vh,1.25rem)] flex-shrink-0">
-                 <button onClick={() => { setSequenceIndex(0); setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id); setPlayerState('playing'); }} className={`${mainMenuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Start New Game</button>
+                 {autosave && (
+                   <button onClick={continueFromAutosave} className={`${mainMenuBtn} bg-[#9457EB33]/60 hover:bg-[#9457EB33]`}>Continue</button>
+                 )}
+                 <button onClick={startNewPlaythrough} className={`${mainMenuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Start New Game</button>
                  <button onClick={() => setPlayerState('load_menu')} className={`${mainMenuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Load Game</button>
-                 <button onClick={() => setCurrentView('game_detail')} className={`${mainMenuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Exit</button>
+                 <button onClick={exitToDetail} className={`${mainMenuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Exit</button>
                </div>
             </div>
           )}
@@ -4339,10 +4653,10 @@ const renderAuthEmail = () => (
 
                <div className="w-full max-w-[min(56vw,225px)] space-y-[clamp(0.35rem,3.2vh,1rem)] flex-shrink-0">
                  <button onClick={() => setPlayerState('playing')} className={`${menuBtn} bg-[#5F448E]/50 backdrop-blur-md hover:bg-[#5F448E]/80 shadow-sm`}>Resume</button>
-                 <button onClick={() => { setSequenceIndex(0); setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id); setPlayerState('playing'); }} className={`${menuBtn} bg-[#5F448E]/50 backdrop-blur-md hover:bg-[#5F448E]/80 shadow-sm`}>Start New Game</button>
+                 <button onClick={startNewPlaythrough} className={`${menuBtn} bg-[#5F448E]/50 backdrop-blur-md hover:bg-[#5F448E]/80 shadow-sm`}>Start New Game</button>
                  <button onClick={() => setPlayerState('save_menu')} className={`${menuBtn} bg-[#5F448E]/50 backdrop-blur-md hover:bg-[#5F448E]/80 shadow-sm`}>Save Game</button>
                  <button onClick={() => setPlayerState('load_menu')} className={`${menuBtn} bg-[#5F448E]/50 backdrop-blur-md hover:bg-[#5F448E]/80 shadow-sm`}>Load Game</button>
-                 <button onClick={() => setCurrentView('game_detail')} className={`${menuBtn} bg-[#5F448E]/50 backdrop-blur-md hover:bg-[#5F448E]/80 shadow-sm`}>Exit</button>
+                 <button onClick={exitToDetail} className={`${menuBtn} bg-[#5F448E]/50 backdrop-blur-md hover:bg-[#5F448E]/80 shadow-sm`}>Exit</button>
                </div>
             </div>
           )}
@@ -4366,8 +4680,8 @@ const renderAuthEmail = () => (
                  </p>
                )}
                <div className="w-full max-w-[min(70vw,300px)] space-y-[clamp(0.35rem,1.3vh,0.75rem)] flex-shrink-0">
-                 <button onClick={() => { setSequenceIndex(0); setCurrentSceneId(storyData?.starting_scene || storyData?.scenes?.[0]?.id); setPlayerState('playing'); }} className={`${menuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Play Again</button>
-                 <button onClick={() => setCurrentView('game_detail')} className={`${menuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Exit</button>
+                 <button onClick={startNewPlaythrough} className={`${menuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Play Again</button>
+                 <button onClick={exitToDetail} className={`${menuBtn} bg-[#9457EB33]/20 hover:bg-[#9457EB33]`}>Exit</button>
                </div>
             </div>
           )}
@@ -4456,8 +4770,10 @@ const renderAuthEmail = () => (
                    dialogue box on a narrow screen. */}
                {portraitUrl && (
                  <img
+                   key={portraitUrl}
                    src={portraitUrl}
                    alt={currentSequenceBlock.speaker}
+                   onError={(e) => { e.currentTarget.style.display = 'none'; }}
                    className="absolute bottom-0 right-[max(1rem,env(safe-area-inset-right))] h-[68%] max-w-[45%] object-contain object-bottom drop-shadow-2xl z-30 pointer-events-none"
                  />
                )}
@@ -4478,7 +4794,7 @@ const renderAuthEmail = () => (
                  </div>
                )}
 
-                                {(!isEndOfSequence || !(currentScene.choices && currentScene.choices.length > 0)) ? (
+                                {!showingChoices ? (
                  // The wrapper is no longer a tap target. Tapping anywhere in
                  // the dialogue box used to advance, which stole taps meant for
                  // scrolling long text and made mis-taps skip lines. Only the
@@ -4539,10 +4855,10 @@ const renderAuthEmail = () => (
                             reference is a 2x2 grid; an odd last choice just sits
                             in the left column at normal width. */}
                         <div className="grid grid-cols-2 gap-[clamp(0.5rem,1.8vh,1rem)]">
-                          {currentScene.choices.map((choice, idx) => (
+                          {offeredChoices.map((choice, idx) => (
                             <button
                               key={idx}
-                              onClick={() => handleChoice(choice.next_scene)}
+                              onClick={() => handleChoice(choice)}
                               className="bg-gradient-to-b from-[#8A35FF]/45 to-[#6B2DE2]/45
                                          hover:from-[#8A35FF] hover:to-[#6B2DE2]
                                          border border-[#C48DFF]/60 text-white font-fraunces

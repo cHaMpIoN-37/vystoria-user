@@ -12,7 +12,7 @@ import {
   LogOut, Trash2, Mail, CheckCircle2, Settings, Loader2,
   Menu, ArrowLeft, Save, Download, Check, Bookmark,
   Edit3, Camera, Heart, ThumbsUp, ThumbsDown, Copy,
-  ArrowRight, Undo2, ChevronRight, Lock, X
+  ArrowRight, Undo2, ChevronRight, Lock, X, Volume2, VolumeX
 } from 'lucide-react';
 
 // --- SUPABASE CONFIGURATION ---
@@ -492,6 +492,149 @@ const resolveNextSceneId = (scene, state) => {
   return scene?.next_scene_default || null;
 };
 
+// --- BACKGROUND MUSIC -------------------------------------------------------
+// Tracks live in stories.assets.music as { trackId: publicUrl }. "theme" is
+// the novel's main track: it plays on the title menu and under every scene
+// that doesn't name its own. A scene picks a track with "music": "<trackId>",
+// or "music": "silence" for a deliberate quiet beat. Resolution depends only
+// on the current scene, so a save, an autosave from another device, or a
+// Load always lands on the right track — no history to replay.
+const MUSIC_THEME_ID = 'theme';
+const MUSIC_SILENCE_ID = 'silence';
+const MUSIC_DEFAULT_VOLUME = 0.55;
+const MUSIC_FADE_MS = 700;
+const MUSIC_PREFS_KEY = 'vystoria_music_muted';
+
+const resolveSceneMusicUrl = (musicMap, scene) => {
+  if (!musicMap) return null;
+  const id = typeof scene?.music === 'string' ? scene.music.trim() : '';
+  if (id === MUSIC_SILENCE_ID) return null;
+  return (id && musicMap[id]) || musicMap[MUSIC_THEME_ID] || null;
+};
+
+// Per-device preference. Wrapped: storage can throw in a locked-down WebView.
+const readMusicMuted = () => {
+  try { return localStorage.getItem(MUSIC_PREFS_KEY) === '1'; } catch { return false; }
+};
+const writeMusicMuted = (muted) => {
+  try { localStorage.setItem(MUSIC_PREFS_KEY, muted ? '1' : '0'); } catch { /* storage blocked */ }
+};
+
+// One looping Audio element for the whole app. Changing `src` fades the old
+// track out and the new one in; the same URL again is a no-op, so a track
+// shared by consecutive scenes plays straight through. null = fade to silence.
+function useBackgroundMusic(src, { muted = false, volume = MUSIC_DEFAULT_VOLUME } = {}) {
+  const audioRef = useRef(null);
+  const fadeRef = useRef(0);
+  const loadedRef = useRef(null);     // URL actually in the element
+  const wantedRef = useRef(null);     // URL that should be playing now
+  const suspendedRef = useRef(false); // app backgrounded / screen locked
+
+  const getAudio = () => {
+    if (!audioRef.current) {
+      const a = new Audio();
+      a.loop = true;
+      a.preload = 'auto';
+      a.volume = 0;
+      audioRef.current = a;
+    }
+    return audioRef.current;
+  };
+
+  const fadeTo = (target, done) => {
+    const a = getAudio();
+    cancelAnimationFrame(fadeRef.current);
+    const from = a.volume;
+    const start = performance.now();
+    const step = (now) => {
+      const t = Math.min(1, (now - start) / MUSIC_FADE_MS);
+      a.volume = Math.min(1, Math.max(0, from + (target - from) * t));
+      if (t < 1) fadeRef.current = requestAnimationFrame(step);
+      else if (done) done();
+    };
+    fadeRef.current = requestAnimationFrame(step);
+  };
+
+  // play() rejects when the WebView wants a user gesture first. Swallow it;
+  // the pointerdown listener below retries on the next tap.
+  const playAndFadeIn = () => {
+    const a = getAudio();
+    if (!loadedRef.current || suspendedRef.current) return;
+    a.play().then(() => fadeTo(volume)).catch(() => {});
+  };
+
+  const load = (url) => {
+    const a = getAudio();
+    loadedRef.current = url;
+    a.volume = 0;
+    if (!url) { a.pause(); a.removeAttribute('src'); a.load(); return; }
+    a.src = url;
+    playAndFadeIn();
+  };
+
+  useEffect(() => {
+    const want = muted ? null : (src || null);
+    wantedRef.current = want;
+    const a = getAudio();
+    if (want === loadedRef.current) {
+      // Same track (or coming back to it mid-fade): just restore volume.
+      if (want && !suspendedRef.current) {
+        if (a.paused) playAndFadeIn(); else fadeTo(volume);
+      }
+      return;
+    }
+    // Reads wantedRef at the END of the fade, so rapid scene changes during a
+    // fade land on the latest track, not an intermediate one.
+    if (loadedRef.current && !a.paused) fadeTo(0, () => load(wantedRef.current));
+    else load(want);
+  }, [src, muted, volume]);
+
+  // Pause when backgrounded (Play policy + nobody wants music from a locked
+  // phone), resume on return, and retry a refused play() on the next tap.
+  useEffect(() => {
+    const suspend = () => {
+      suspendedRef.current = true;
+      cancelAnimationFrame(fadeRef.current);
+      audioRef.current?.pause();
+    };
+    const resume = () => {
+      if (!suspendedRef.current) return;
+      suspendedRef.current = false;
+      if (audioRef.current) audioRef.current.volume = 0;
+      // A fade-out cut short by the suspend never swapped tracks — do it now.
+      if (wantedRef.current !== loadedRef.current) load(wantedRef.current);
+      else playAndFadeIn();
+    };
+    const onVisibility = () => (document.visibilityState === 'hidden' ? suspend() : resume());
+    const retry = () => {
+      const a = audioRef.current;
+      if (a && loadedRef.current && a.paused && !suspendedRef.current) playAndFadeIn();
+    };
+
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pointerdown', retry);
+    let handle = null;
+    let cancelled = false;
+    if (IS_NATIVE) {
+      CapacitorApp.addListener('appStateChange', ({ isActive }) => (isActive ? resume() : suspend()))
+        .then(h => { if (cancelled) h.remove(); else handle = h; })
+        .catch(() => {});
+    }
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pointerdown', retry);
+      if (handle) handle.remove();
+    };
+  }, [volume]);
+
+  useEffect(() => () => {
+    cancelAnimationFrame(fadeRef.current);
+    const a = audioRef.current;
+    if (a) { a.pause(); a.removeAttribute('src'); a.load(); }
+  }, []);
+}
+
 // --- HOME RAILS ---
 // Genre is the free-text "Genre Tags" field from the creator app (e.g.
 // "Action / Dark Fantasy"), so rails match on keywords, not equality, and one
@@ -793,6 +936,24 @@ export default function App() {
   }, [currentSceneId, currentView, selectedGame]);
   const [sequenceIndex, setSequenceIndex] = useState(0);
   const [playerError, setPlayerError] = useState(null);
+
+  // --- BACKGROUND MUSIC ---
+  const [musicMuted, setMusicMuted] = useState(readMusicMuted);
+  const toggleMusicMuted = () => setMusicMuted(m => { writeMusicMuted(!m); return !m; });
+
+  // Music exists only inside the engine. Exit, logout or any other way out
+  // flips currentView, this becomes null, and the hook fades to silence.
+  // Title menu = theme; everywhere else (playing, paused, save/load, The End)
+  // keeps the current scene's track so pausing never changes the music.
+  const engineMusicMap = selectedGame?.assets?.music || null;
+  const engineHasMusic = !!engineMusicMap && Object.keys(engineMusicMap).length > 0;
+  const engineMusicUrl = (() => {
+    if (currentView !== 'engine' || !storyData || !engineHasMusic) return null;
+    if (playerState === 'main_menu') return engineMusicMap[MUSIC_THEME_ID] || null;
+    const scene = storyData.scenes?.find(s => s.id === currentSceneId);
+    return resolveSceneMusicUrl(engineMusicMap, scene);
+  })();
+  useBackgroundMusic(engineMusicUrl, { muted: musicMuted });
 
   // --- STORY STATE + CROSS-DEVICE AUTOSAVE (Phase 3) ---
   // Variables for the open story ({} for a legacy story with no state).
@@ -4610,6 +4771,24 @@ const renderAuthEmail = () => (
              <img src={engineBg} className="w-full h-full object-cover blur-sm brightness-50" alt="Engine BG" />
              <div className="absolute inset-0 bg-black/40"></div>
           </div>
+
+          {/* Music toggle — top-right, mirroring the Menu button top-left, and
+              shown on every engine screen. z-[54] keeps it above the menus and
+              the playing layer (z-50) but under the dead-end overlay (z-55)
+              and the save confirmation (z-60). Hidden for stories with no music. */}
+          {engineHasMusic && (
+            <button
+              type="button"
+              onClick={toggleMusicMuted}
+              aria-label={musicMuted ? 'Turn music on' : 'Turn music off'}
+              className="absolute top-[max(0.5rem,env(safe-area-inset-top))] right-[max(0.5rem,env(safe-area-inset-right))] z-[54]
+                         p-2 bg-black/30 hover:bg-white/10 rounded-md transition active:scale-90"
+            >
+              {musicMuted
+                ? <VolumeX className="w-[clamp(20px,5.5vh,28px)] h-[clamp(20px,5.5vh,28px)] text-white/70" strokeWidth={2.5} />
+                : <Volume2 className="w-[clamp(20px,5.5vh,28px)] h-[clamp(20px,5.5vh,28px)] text-white" strokeWidth={2.5} />}
+            </button>
+          )}
 
           {/* MAIN MENU — flex column instead of two absolutely-positioned
               blocks. Title takes the space it needs at the top, the button
